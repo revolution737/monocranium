@@ -1,0 +1,4 @@
+pymavlink>=2.4.41
+websockets>=13.0
+aiohttp>=3.9
+pygame-ce>=2.5
