@@ -129,6 +129,39 @@ async def test_ws_handlers_rc_override(
 
 
 @pytest.mark.asyncio
+async def test_ws_handlers_rc_override_drone_4ch(
+    vehicle_registry: VehicleRegistry,
+    param_store: ParameterStore,
+    mock_auto_config: MagicMock,
+    mock_conn_manager: MagicMock,
+) -> None:
+    """Verify rc_override dispatches 4-channel override for drone."""
+    cmd = json.dumps({
+        "action": "rc_override",
+        "system_id": 3,
+        "payload": {
+            "throttle_pwm": 1650,
+            "roll_pwm": 1450,
+            "pitch_pwm": 1550,
+            "yaw_pwm": 1520,
+        },
+    })
+    res = await dispatch_command(
+        cmd,
+        vehicle_registry,
+        param_store,
+        mock_auto_config,
+        mock_conn_manager,
+    )
+    assert res["success"] is True
+    assert res["data"]["throttle"] == 1650
+    assert res["data"]["roll"] == 1450
+    assert res["data"]["pitch"] == 1550
+    assert res["data"]["yaw"] == 1520
+    mock_auto_config.send_rc_override.assert_awaited_once_with(3, 1650, 1450, 1550, 1520)
+
+
+@pytest.mark.asyncio
 async def test_ws_handlers_set_parameter(
     vehicle_registry: VehicleRegistry,
     param_store: ParameterStore,

@@ -89,3 +89,16 @@ Format for each entry:
 - **Rationale**: Guarantees deterministic execution regardless of user shell state, eliminates IDE redlines, and keeps the test suite passing under strict Mypy and IDE analyzers.
 - **Alternatives Considered**: (1) Rely on manual user virtualenv activation — rejected as fragile across varying shell configurations.
 
+---
+
+## DECISION-009: ArduPilot Copter SITL Support and 4-Axis Actuation
+
+- **Date**: 2026-09-26
+- **Author**: Aditi
+- **Context**: Monocranium originally supported only 4WD differential-drive skid-steer rovers. Extending the architecture to support ArduPilot Copter SITL quadcopters requires detecting copter heartbeats, classifying multirotor vehicle types, expanding the MAVLink RC override channel mapping from 2 channels (throttle, steering) to 4 channels (roll, pitch, throttle, yaw), supporting dual-endpoint background discovery in the Core Bridge, and adapting dashboard controls while maintaining 100% backward compatibility with rovers and strictly preserving pymavlink quarantine boundaries.
+- **Decision**: (1) Extend `VehicleType.COPTER` in `src/core/types.py` mapping MAVLink multirotor types (2, 3, 4, 13, 14, 15) to `COPTER`; (2) Generalize `create_rc_override_msg()` in `src/core/protocol.py` and `send_rc_override()` in `src/core/auto_config.py` with default arguments (`pitch=0, yaw=0`), ensuring backward compatibility with 2-argument rover callers; (3) Extract helper in `src/server/ws_handlers.py` to route 2-axis rover commands and 4-axis drone commands without exceeding 40-line function limits; (4) Implement decoupled ArduPilot Copter simulation modules in `src/simulators/drone_config.py`, `src/simulators/drone_physics.py`, and `src/simulators/drone_sim.py` (listening on TCP port 5771 with System ID 3), keeping `pymavlink` quarantined to `drone_sim.py`; (5) Wire both endpoints into `src/main.py` scanner and provide `scripts/start_drone_sim.sh`; (6) Add a context-sensitive 4-axis flight controller interface in `dashboard/src/pages/DashboardPage.jsx` when active vehicle is a copter while preserving the existing skid-steer control pad for rovers.
+- **Rationale**: Follows the repository's established "Arm Stump" architecture. Core abstractions (`TelemetryBus`, `ParameterStore`, `VehicleRegistry`, `AutoConfigEngine`) remain completely vehicle-agnostic. Rover tests and functionality are fully preserved without regression.
+- **Consequences**: Both Rover (port 5770, sysid 2) and ArduPilot Copter (port 5771, sysid 3) can be simulated and controlled simultaneously or individually. Test suite expanded from 76 to 101 tests, all passing cleanly.
+- **Alternatives Considered**: (1) Create separate core bridges for rovers and copters — rejected as violating Monocranium's unified "one brain to rule them all" philosophy; (2) Modify core types to include vehicle-specific flight fields — rejected as violation of Rule 7 in AGENTS.md; (3) Allow direct pymavlink usage in drone physics — rejected as violation of Rule 6 quarantine.
+
+

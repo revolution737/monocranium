@@ -22,6 +22,8 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Monocranium Core Bridge")
     parser.add_argument("--rover-host", type=str, default="127.0.0.1", help="Rover TCP host")
     parser.add_argument("--rover-port", type=int, default=5770, help="Rover TCP port")
+    parser.add_argument("--drone-host", type=str, default="127.0.0.1", help="Drone TCP host")
+    parser.add_argument("--drone-port", type=int, default=5771, help="Drone TCP port")
     parser.add_argument("--ws-port", type=int, default=8765, help="WebSocket server port")
     parser.add_argument("--http-port", type=int, default=8080, help="HTTP dashboard port")
     return parser.parse_args()
@@ -55,7 +57,10 @@ async def run_bridge(args: argparse.Namespace, stop_event: asyncio.Event) -> Non
     await http_server.start()
     await ws_server.start()
 
-    endpoints = [ConnectionEndpoint(args.rover_host, args.rover_port, "tcp")]
+    endpoints = [
+        ConnectionEndpoint(args.rover_host, args.rover_port, "tcp"),
+        ConnectionEndpoint(args.drone_host, args.drone_port, "tcp"),
+    ]
     logger.info("Core Bridge running: WS port %d, HTTP port %d", args.ws_port, args.http_port)
     asyncio.create_task(auto_config.run_full_scan(endpoints))
 

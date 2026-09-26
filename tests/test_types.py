@@ -21,6 +21,16 @@ def test_vehicle_type_from_mav_type_rover() -> None:
     assert VehicleType.from_mav_type(10) == VehicleType.ROVER
 
 
+def test_vehicle_type_from_mav_type_copter() -> None:
+    """Verify VehicleType.from_mav_type maps multirotor types to COPTER."""
+    assert VehicleType.from_mav_type(2) == VehicleType.COPTER
+    assert VehicleType.from_mav_type(3) == VehicleType.COPTER
+    assert VehicleType.from_mav_type(4) == VehicleType.COPTER
+    assert VehicleType.from_mav_type(13) == VehicleType.COPTER
+    assert VehicleType.from_mav_type(14) == VehicleType.COPTER
+    assert VehicleType.from_mav_type(15) == VehicleType.COPTER
+
+
 def test_vehicle_type_from_mav_type_unknown() -> None:
     """Verify VehicleType.from_mav_type maps unsupported values to UNKNOWN."""
     assert VehicleType.from_mav_type(999) == VehicleType.UNKNOWN

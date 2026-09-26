@@ -247,7 +247,9 @@ def create_rc_override_msg(
     target_system: int,
     target_component: int,
     throttle: int,
-    steering: int,
+    steering: int = 1500,
+    pitch: int = 0,
+    yaw: int = 0,
 ) -> Any:
     """Create an RC_CHANNELS_OVERRIDE message.
 
@@ -255,7 +257,9 @@ def create_rc_override_msg(
         target_system: Target system ID.
         target_component: Target component ID.
         throttle: PWM value for channel 3 (1000-2000).
-        steering: PWM value for channel 1 (1000-2000).
+        steering: PWM value for channel 1 (roll or steering, 1000-2000).
+        pitch: PWM value for channel 2 (pitch, 1000-2000 or 0 for ignore).
+        yaw: PWM value for channel 4 (yaw, 1000-2000 or 0 for ignore).
 
     Returns:
         MAVLink RC_CHANNELS_OVERRIDE message object.
@@ -265,9 +269,9 @@ def create_rc_override_msg(
         target_system,
         target_component,
         steering,
-        0,
+        pitch,
         throttle,
-        0,
+        yaw,
         0,
         0,
         0,

@@ -12,6 +12,7 @@ class VehicleType(enum.Enum):
     """Type of unmanned vehicle."""
 
     ROVER = "rover"
+    COPTER = "copter"
     UNKNOWN = "unknown"
 
     @classmethod
@@ -22,11 +23,14 @@ class VehicleType(enum.Enum):
             mav_type: Integer from the MAVLink HEARTBEAT message 'type' field.
 
         Returns:
-            VehicleType.ROVER if mav_type == 10, otherwise VehicleType.UNKNOWN.
+            VehicleType member matching mav_type.
         """
         mav_type_ground_rover = 10
+        mav_type_copter_types = (2, 3, 4, 13, 14, 15)
         if mav_type == mav_type_ground_rover:
             return cls.ROVER
+        if mav_type in mav_type_copter_types:
+            return cls.COPTER
         return cls.UNKNOWN
 
 

@@ -12,6 +12,9 @@ from src.core.protocol import (
     create_rc_override_msg,
 )
 from src.core.types import ConnectionEndpoint
+from src.simulators.drone_config import DEFAULT_DRONE_CONFIG
+from src.simulators.drone_physics import DroneKinematics
+from src.simulators.drone_sim import DroneMavlinkServer
 from src.simulators.rover_config import DEFAULT_ROVER_CONFIG
 from src.simulators.rover_physics import RoverKinematics
 from src.simulators.rover_sim import RoverMavlinkServer
@@ -122,6 +125,52 @@ async def test_rc_override_changes_rover_state() -> None:
             await asyncio.sleep(0.05)
 
         assert server.current_rc == (1700, 1300)
+    finally:
+        mav_conn.close()
+        await server.stop()
+
+
+@pytest.mark.asyncio
+async def test_drone_sim_e2e_discovery_and_rc() -> None:
+    """End-to-end: DroneMavlinkServer broadcasts copter heartbeat and receives 4-ch override."""
+    test_port = 5783
+    kin = DroneKinematics(DEFAULT_DRONE_CONFIG)
+    server = DroneMavlinkServer(kin, DEFAULT_DRONE_CONFIG, port=test_port, system_id=3)
+    await server.start()
+
+    endpoint = ConnectionEndpoint(address="127.0.0.1", port=test_port, protocol="tcp")
+    mav_conn = create_mav_connection(endpoint)
+
+    try:
+        hb_received = False
+        start = time.time()
+        while time.time() - start < 3.0:
+            msg = mav_conn.recv_msg()
+            if msg and msg.get_type() == "HEARTBEAT":
+                assert msg.type == 2  # MAV_TYPE_QUADROTOR
+                assert msg.autopilot == 3  # MAV_AUTOPILOT_ARDUPILOTMEGA
+                hb_received = True
+                break
+            await asyncio.sleep(0.05)
+        assert hb_received is True
+
+        override = create_rc_override_msg(
+            target_system=3,
+            target_component=1,
+            throttle=1650,
+            steering=1420,
+            pitch=1580,
+            yaw=1510,
+        )
+        mav_conn.mav.send(override)
+
+        start = time.time()
+        while time.time() - start < 2.0:
+            if server.current_rc == (1420, 1580, 1650, 1510):
+                break
+            await asyncio.sleep(0.05)
+
+        assert server.current_rc == (1420, 1580, 1650, 1510)
     finally:
         mav_conn.close()
         await server.stop()

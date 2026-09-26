@@ -187,16 +187,27 @@ class AutoConfigEngine:
         self,
         system_id: int,
         throttle_pwm: int,
-        steering_pwm: int,
+        steering_pwm: int = 1500,
+        pitch_pwm: int = 0,
+        yaw_pwm: int = 0,
     ) -> None:
         """Send RC override commands to control vehicle actuators.
 
         Args:
             system_id: Target vehicle system ID.
             throttle_pwm: Throttle PWM value (1000-2000).
-            steering_pwm: Steering PWM value (1000-2000).
+            steering_pwm: Steering or roll PWM value (1000-2000).
+            pitch_pwm: Pitch PWM value (1000-2000, or 0 for unassigned).
+            yaw_pwm: Yaw PWM value (1000-2000, or 0 for unassigned).
         """
-        msg = create_rc_override_msg(system_id, 1, throttle_pwm, steering_pwm)
+        msg = create_rc_override_msg(
+            system_id,
+            1,
+            throttle=throttle_pwm,
+            steering=steering_pwm,
+            pitch=pitch_pwm,
+            yaw=yaw_pwm,
+        )
         for conn in self._conn_mgr.list_connections():
             await conn.send_message(msg)
 

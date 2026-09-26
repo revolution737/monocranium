@@ -6,6 +6,7 @@ import pytest
 
 from src.core.protocol import (
     create_mav_connection,
+    create_rc_override_msg,
     parse_attitude,
     parse_battery,
     parse_gps,
@@ -30,6 +31,18 @@ def test_parse_heartbeat_rover() -> None:
     assert identity.component_id == 1
     assert identity.vehicle_type == VehicleType.ROVER
     assert identity.autopilot_type == AutopilotType.GENERIC
+
+
+def test_parse_heartbeat_copter() -> None:
+    """Verify parse_heartbeat handles MAV_TYPE_QUADROTOR with ArduPilot."""
+    msg = MagicMock()
+    msg.type = 2
+    msg.autopilot = 3
+    identity = parse_heartbeat(msg, system_id=3, component_id=1)
+    assert identity.system_id == 3
+    assert identity.component_id == 1
+    assert identity.vehicle_type == VehicleType.COPTER
+    assert identity.autopilot_type == AutopilotType.ARDUPILOT
 
 
 def test_parse_heartbeat_unknown_type() -> None:
@@ -146,3 +159,32 @@ def test_create_mav_connection_udp(mock_mavconn: MagicMock) -> None:
     endpoint = ConnectionEndpoint(address="0.0.0.0", port=14550, protocol="udp")
     create_mav_connection(endpoint)
     mock_mavconn.assert_called_once_with("udpin:0.0.0.0:14550")
+
+
+def test_create_rc_override_msg_rover_compat() -> None:
+    """Verify create_rc_override_msg defaults pitch and yaw to 0 for rover."""
+    msg = create_rc_override_msg(target_system=2, target_component=1, throttle=1700, steering=1300)
+    assert msg.target_system == 2
+    assert msg.target_component == 1
+    assert msg.chan1_raw == 1300  # steering
+    assert msg.chan2_raw == 0     # pitch unassigned
+    assert msg.chan3_raw == 1700  # throttle
+    assert msg.chan4_raw == 0     # yaw unassigned
+
+
+def test_create_rc_override_msg_drone_4ch() -> None:
+    """Verify create_rc_override_msg populates all 4 flight channels for drone."""
+    msg = create_rc_override_msg(
+        target_system=3,
+        target_component=1,
+        throttle=1650,
+        steering=1420,
+        pitch=1580,
+        yaw=1510,
+    )
+    assert msg.target_system == 3
+    assert msg.target_component == 1
+    assert msg.chan1_raw == 1420  # roll
+    assert msg.chan2_raw == 1580  # pitch
+    assert msg.chan3_raw == 1650  # throttle
+    assert msg.chan4_raw == 1510  # yaw

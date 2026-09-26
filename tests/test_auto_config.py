@@ -135,3 +135,28 @@ async def test_auto_config_send_rc_override_and_set_param(
 
     await auto_engine.set_parameter(2, "CRUISE_SPEED", 2.0)
     assert mock_conn.send_message.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_auto_config_send_rc_override_4ch(
+    auto_engine: AutoConfigEngine,
+    mock_conn_mgr: MagicMock,
+) -> None:
+    """Verify send_rc_override transmits all 4 channels for drones."""
+    mock_conn = MagicMock()
+    mock_conn.send_message = AsyncMock()
+    mock_conn_mgr.list_connections.return_value = [mock_conn]
+
+    await auto_engine.send_rc_override(
+        system_id=3,
+        throttle_pwm=1600,
+        steering_pwm=1450,
+        pitch_pwm=1550,
+        yaw_pwm=1520,
+    )
+    assert mock_conn.send_message.await_count == 1
+    sent_msg = mock_conn.send_message.await_args[0][0]
+    assert sent_msg.chan1_raw == 1450
+    assert sent_msg.chan2_raw == 1550
+    assert sent_msg.chan3_raw == 1600
+    assert sent_msg.chan4_raw == 1520

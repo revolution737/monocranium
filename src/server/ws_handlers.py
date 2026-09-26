@@ -82,10 +82,7 @@ async def _execute_action(
             return {"response_to": action, "success": True, "data": res_data}
 
         if action == "rc_override":
-            throttle = int(payload.get("throttle_pwm", 1500))
-            steering = int(payload.get("steering_pwm", 1500))
-            await auto_config.send_rc_override(sys_id, throttle, steering)
-            rc_data = {"throttle": throttle, "steering": steering}
+            rc_data = await _handle_rc_override(sys_id, payload, auto_config)
             return {"response_to": action, "success": True, "data": rc_data}
 
         if action == "run_autoconfig":
@@ -103,6 +100,31 @@ async def _execute_action(
     except (ValueError, KeyError, OSError) as e:
         logger.error("Action '%s' execution failed: %s", action, e)
         return {"response_to": action, "success": False, "error": str(e)}
+
+
+async def _handle_rc_override(
+    sys_id: int,
+    payload: dict[str, Any],
+    auto_config: AutoConfigEngine,
+) -> dict[str, Any]:
+    """Parse and dispatch 2-axis or 4-axis RC override commands."""
+    throttle = int(payload.get("throttle_pwm", 1500))
+    steering = int(payload.get("roll_pwm", payload.get("steering_pwm", 1500)))
+    pitch = int(payload.get("pitch_pwm", 0))
+    yaw = int(payload.get("yaw_pwm", 0))
+
+    if pitch == 0 and yaw == 0:
+        await auto_config.send_rc_override(sys_id, throttle, steering)
+    else:
+        await auto_config.send_rc_override(sys_id, throttle, steering, pitch, yaw)
+
+    return {
+        "throttle": throttle,
+        "steering": steering,
+        "roll": steering,
+        "pitch": pitch,
+        "yaw": yaw,
+    }
 
 
 async def _handle_run_autoconfig(

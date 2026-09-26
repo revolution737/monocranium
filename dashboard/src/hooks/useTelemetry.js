@@ -145,11 +145,18 @@ export function useTelemetry(ws) {
   }, [isConnected, activeSystemId, sendMessage]);
 
   const sendRcOverride = useCallback(
-    (throttle, steering) => {
+    (throttle, steering = 1500, pitch = 0, yaw = 0, roll = null) => {
+      const rollVal = roll !== null ? roll : steering;
       return sendMessage({
         action: 'rc_override',
         system_id: activeSystemId,
-        payload: { throttle_pwm: throttle, steering_pwm: steering },
+        payload: {
+          throttle_pwm: throttle,
+          steering_pwm: steering,
+          roll_pwm: rollVal,
+          pitch_pwm: pitch,
+          yaw_pwm: yaw,
+        },
       });
     },
     [activeSystemId, sendMessage]
