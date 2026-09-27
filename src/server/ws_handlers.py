@@ -55,6 +55,58 @@ async def dispatch_command(
     )
 
 
+async def _dispatch_query_action(
+    action: str,
+    sys_id: int,
+    registry: VehicleRegistry,
+    param_store: ParameterStore,
+    conn_mgr: ConnectionManager,
+) -> dict[str, Any] | None:
+    """Handle query/read actions returning system state."""
+    if action == "get_vehicles":
+        vehicles = [v.to_dict() for v in registry.list_all()]
+        return {"response_to": action, "success": True, "data": vehicles}
+    if action == "get_parameters":
+        params = [p.to_dict() for p in param_store.get_all(sys_id)]
+        return {"response_to": action, "success": True, "data": params}
+    if action == "get_connection_status":
+        statuses = [
+            {"address": c.endpoint.address, "port": c.endpoint.port, "state": c.state.value}
+            for c in conn_mgr.list_connections()
+        ]
+        return {"response_to": action, "success": True, "data": statuses}
+    return None
+
+
+async def _dispatch_command_action(
+    action: str,
+    sys_id: int,
+    payload: dict[str, Any],
+    auto_config: AutoConfigEngine,
+    conn_mgr: ConnectionManager,
+) -> dict[str, Any] | None:
+    """Handle command/control actions dispatched to AutoConfigEngine."""
+    if action == "set_parameter":
+        param_id = str(payload.get("param_id", ""))
+        val = float(payload.get("value", 0.0))
+        await auto_config.set_parameter(sys_id, param_id, val)
+        res_data = {"param_id": param_id, "value": val}
+        return {"response_to": action, "success": True, "data": res_data}
+    if action == "rc_override":
+        rc_data = await _handle_rc_override(sys_id, payload, auto_config)
+        return {"response_to": action, "success": True, "data": rc_data}
+    if action == "run_autoconfig":
+        discovered = await _handle_run_autoconfig(payload, auto_config, conn_mgr)
+        return {"response_to": action, "success": True, "data": discovered}
+    if action == "arm_vehicle":
+        arm_data = await _handle_arm_vehicle(sys_id, payload, auto_config)
+        return {"response_to": action, "success": True, "data": arm_data}
+    if action == "set_flight_mode":
+        mode_data = await _handle_set_flight_mode(sys_id, payload, auto_config)
+        return {"response_to": action, "success": True, "data": mode_data}
+    return None
+
+
 async def _execute_action(
     action: str,
     sys_id: int,
@@ -66,43 +118,13 @@ async def _execute_action(
 ) -> dict[str, Any]:
     """Execute action and return standard response."""
     try:
-        if action == "get_vehicles":
-            vehicles = [v.to_dict() for v in registry.list_all()]
-            return {"response_to": action, "success": True, "data": vehicles}
+        query_res = await _dispatch_query_action(action, sys_id, registry, param_store, conn_mgr)
+        if query_res is not None:
+            return query_res
 
-        if action == "get_parameters":
-            params = [p.to_dict() for p in param_store.get_all(sys_id)]
-            return {"response_to": action, "success": True, "data": params}
-
-        if action == "set_parameter":
-            param_id = str(payload.get("param_id", ""))
-            val = float(payload.get("value", 0.0))
-            await auto_config.set_parameter(sys_id, param_id, val)
-            res_data = {"param_id": param_id, "value": val}
-            return {"response_to": action, "success": True, "data": res_data}
-
-        if action == "rc_override":
-            rc_data = await _handle_rc_override(sys_id, payload, auto_config)
-            return {"response_to": action, "success": True, "data": rc_data}
-
-        if action == "run_autoconfig":
-            discovered = await _handle_run_autoconfig(payload, auto_config, conn_mgr)
-            return {"response_to": action, "success": True, "data": discovered}
-
-        if action == "get_connection_status":
-            statuses = [
-                {"address": c.endpoint.address, "port": c.endpoint.port, "state": c.state.value}
-                for c in conn_mgr.list_connections()
-            ]
-            return {"response_to": action, "success": True, "data": statuses}
-
-        if action == "arm_vehicle":
-            arm_data = await _handle_arm_vehicle(sys_id, payload, auto_config)
-            return {"response_to": action, "success": True, "data": arm_data}
-
-        if action == "set_flight_mode":
-            mode_data = await _handle_set_flight_mode(sys_id, payload, auto_config)
-            return {"response_to": action, "success": True, "data": mode_data}
+        cmd_res = await _dispatch_command_action(action, sys_id, payload, auto_config, conn_mgr)
+        if cmd_res is not None:
+            return cmd_res
 
         return {"response_to": action, "success": False, "error": f"Unknown action '{action}'"}
     except (ValueError, KeyError, OSError) as e:
