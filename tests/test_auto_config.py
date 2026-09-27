@@ -160,3 +160,50 @@ async def test_auto_config_send_rc_override_4ch(
     assert sent_msg.chan2_raw == 1550
     assert sent_msg.chan3_raw == 1600
     assert sent_msg.chan4_raw == 1520
+
+
+@pytest.mark.asyncio
+async def test_auto_config_arm_vehicle(
+    auto_engine: AutoConfigEngine,
+    mock_conn_mgr: MagicMock,
+) -> None:
+    """Verify arm_vehicle transmits COMMAND_LONG with arm and disarm payloads."""
+    mock_conn = MagicMock()
+    mock_conn.send_message = AsyncMock()
+    mock_conn_mgr.list_connections.return_value = [mock_conn]
+
+    await auto_engine.arm_vehicle(system_id=3, arm=True)
+    assert mock_conn.send_message.await_count == 1
+    arm_msg = mock_conn.send_message.await_args[0][0]
+    assert arm_msg.command == 400
+    assert arm_msg.param1 == 1.0
+
+    await auto_engine.arm_vehicle(system_id=3, arm=False)
+    assert mock_conn.send_message.await_count == 2
+    disarm_msg = mock_conn.send_message.await_args[0][0]
+    assert disarm_msg.command == 400
+    assert disarm_msg.param1 == 0.0
+
+
+@pytest.mark.asyncio
+async def test_auto_config_set_mode(
+    auto_engine: AutoConfigEngine,
+    mock_conn_mgr: MagicMock,
+) -> None:
+    """Verify set_mode transmits COMMAND_LONG with correct mode identifiers."""
+    mock_conn = MagicMock()
+    mock_conn.send_message = AsyncMock()
+    mock_conn_mgr.list_connections.return_value = [mock_conn]
+
+    await auto_engine.set_mode(system_id=3, mode="LOITER")
+    assert mock_conn.send_message.await_count == 1
+    mode_msg = mock_conn.send_message.await_args[0][0]
+    assert mode_msg.command == 176
+    assert mode_msg.param2 == 5.0
+
+    await auto_engine.set_mode(system_id=3, mode=6)
+    assert mock_conn.send_message.await_count == 2
+    rtl_msg = mock_conn.send_message.await_args[0][0]
+    assert rtl_msg.command == 176
+    assert rtl_msg.param2 == 6.0
+

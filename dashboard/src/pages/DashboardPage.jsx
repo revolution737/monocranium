@@ -7,6 +7,8 @@ export function DashboardPage({
   logs,
   onSendRcOverride,
   activeVehicle,
+  onArmVehicle,
+  onSetFlightMode,
 }) {
   const isCopter = activeVehicle?.vehicle_type === 'copter';
 
@@ -15,6 +17,8 @@ export function DashboardPage({
   const [roll, setRoll] = useState(1500);
   const [pitch, setPitch] = useState(1500);
   const [yaw, setYaw] = useState(1500);
+  const [isArmed, setIsArmed] = useState(false);
+  const [flightMode, setFlightMode] = useState('STABILIZE');
 
   const handleThrottleChange = (val) => {
     const num = parseInt(val, 10);
@@ -59,6 +63,18 @@ export function DashboardPage({
   };
 
   const stop = () => drive(1500, 1500);
+
+  const handleArmToggle = () => {
+    const nextArmed = !isArmed;
+    setIsArmed(nextArmed);
+    onArmVehicle(nextArmed);
+  };
+
+  const handleModeChange = (e) => {
+    const mode = e.target.value;
+    setFlightMode(mode);
+    onSetFlightMode(mode);
+  };
 
   const yawDeg = ((telemetry.attitude.yaw * 180) / Math.PI).toFixed(1);
   const rollDeg = ((telemetry.attitude.roll * 180) / Math.PI).toFixed(1);
@@ -189,6 +205,34 @@ export function DashboardPage({
               {/* Center flight controls */}
               <div style={{ display: 'flex', justifyContent: 'center', marginTop: '4px' }}>
                 <button onClick={centerSticks} className="btn btn--sm">■ Center Sticks / Hover</button>
+              </div>
+
+              {/* ARM / DISARM and Flight Mode Controls */}
+              <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginTop: '8px', paddingTop: '12px', borderTop: '1px solid var(--border)' }}>
+                <button
+                  onClick={handleArmToggle}
+                  className={`btn btn--sm ${isArmed ? 'btn--primary' : 'btn--danger'}`}
+                  style={{ minWidth: '100px' }}
+                >
+                  {isArmed ? '🟢 ARMED' : '🔴 DISARMED'}
+                </button>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
+                  <span style={{ fontSize: '12px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>Flight Mode</span>
+                  <select
+                    value={flightMode}
+                    onChange={handleModeChange}
+                    className="input"
+                    style={{ flex: 1, fontSize: '12px', padding: '4px 8px' }}
+                  >
+                    <option value="STABILIZE">STABILIZE</option>
+                    <option value="ALT_HOLD">ALT_HOLD</option>
+                    <option value="LOITER">LOITER</option>
+                    <option value="RTL">RTL</option>
+                    <option value="LAND">LAND</option>
+                    <option value="GUIDED">GUIDED</option>
+                  </select>
+                </div>
               </div>
             </div>
           ) : (

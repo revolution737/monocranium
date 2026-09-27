@@ -25,6 +25,8 @@ def mock_auto_config() -> MagicMock:
     engine.send_rc_override = AsyncMock()
     engine.set_parameter = AsyncMock()
     engine.run_full_scan = AsyncMock(return_value=[])
+    engine.arm_vehicle = AsyncMock()
+    engine.set_mode = AsyncMock()
     return engine
 
 
@@ -225,3 +227,104 @@ async def test_http_server_fallback_html(tmp_path: Path) -> None:
     assert "text/html" in res.content_type
     assert res.text is not None
     assert "Monocranium Core Bridge" in res.text
+
+
+@pytest.mark.asyncio
+async def test_ws_handlers_arm_vehicle(
+    vehicle_registry: VehicleRegistry,
+    param_store: ParameterStore,
+    mock_auto_config: MagicMock,
+    mock_conn_manager: MagicMock,
+) -> None:
+    """Verify arm_vehicle action dispatches arm command."""
+    cmd = json.dumps({
+        "action": "arm_vehicle",
+        "system_id": 3,
+        "payload": {"arm": True},
+    })
+    res = await dispatch_command(
+        cmd,
+        vehicle_registry,
+        param_store,
+        mock_auto_config,
+        mock_conn_manager,
+    )
+    assert res["success"] is True
+    assert res["data"]["armed"] is True
+    mock_auto_config.arm_vehicle.assert_awaited_once_with(3, True)
+
+
+@pytest.mark.asyncio
+async def test_ws_handlers_disarm_vehicle(
+    vehicle_registry: VehicleRegistry,
+    param_store: ParameterStore,
+    mock_auto_config: MagicMock,
+    mock_conn_manager: MagicMock,
+) -> None:
+    """Verify arm_vehicle action dispatches disarm command."""
+    cmd = json.dumps({
+        "action": "arm_vehicle",
+        "system_id": 3,
+        "payload": {"arm": False},
+    })
+    res = await dispatch_command(
+        cmd,
+        vehicle_registry,
+        param_store,
+        mock_auto_config,
+        mock_conn_manager,
+    )
+    assert res["success"] is True
+    assert res["data"]["armed"] is False
+    mock_auto_config.arm_vehicle.assert_awaited_once_with(3, False)
+
+
+@pytest.mark.asyncio
+async def test_ws_handlers_set_flight_mode(
+    vehicle_registry: VehicleRegistry,
+    param_store: ParameterStore,
+    mock_auto_config: MagicMock,
+    mock_conn_manager: MagicMock,
+) -> None:
+    """Verify set_flight_mode action dispatches mode change command."""
+    cmd = json.dumps({
+        "action": "set_flight_mode",
+        "system_id": 3,
+        "payload": {"mode": "LOITER"},
+    })
+    res = await dispatch_command(
+        cmd,
+        vehicle_registry,
+        param_store,
+        mock_auto_config,
+        mock_conn_manager,
+    )
+    assert res["success"] is True
+    assert res["data"]["mode"] == "LOITER"
+    mock_auto_config.set_mode.assert_awaited_once_with(3, "LOITER")
+
+
+@pytest.mark.asyncio
+async def test_ws_handlers_set_flight_mode_defaults(
+    vehicle_registry: VehicleRegistry,
+    param_store: ParameterStore,
+    mock_auto_config: MagicMock,
+    mock_conn_manager: MagicMock,
+) -> None:
+    """Verify set_flight_mode defaults to STABILIZE when mode missing."""
+    cmd = json.dumps({
+        "action": "set_flight_mode",
+        "system_id": 3,
+        "payload": {},
+    })
+    res = await dispatch_command(
+        cmd,
+        vehicle_registry,
+        param_store,
+        mock_auto_config,
+        mock_conn_manager,
+    )
+    assert res["success"] is True
+    assert res["data"]["mode"] == "STABILIZE"
+    mock_auto_config.set_mode.assert_awaited_once_with(3, "STABILIZE")
+

@@ -96,6 +96,14 @@ async def _execute_action(
             ]
             return {"response_to": action, "success": True, "data": statuses}
 
+        if action == "arm_vehicle":
+            arm_data = await _handle_arm_vehicle(sys_id, payload, auto_config)
+            return {"response_to": action, "success": True, "data": arm_data}
+
+        if action == "set_flight_mode":
+            mode_data = await _handle_set_flight_mode(sys_id, payload, auto_config)
+            return {"response_to": action, "success": True, "data": mode_data}
+
         return {"response_to": action, "success": False, "error": f"Unknown action '{action}'"}
     except (ValueError, KeyError, OSError) as e:
         logger.error("Action '%s' execution failed: %s", action, e)
@@ -148,3 +156,26 @@ async def _handle_run_autoconfig(
 
     discovered = await auto_config.run_full_scan(endpoints)
     return [v.to_dict() for v in discovered]
+
+
+async def _handle_arm_vehicle(
+    sys_id: int,
+    payload: dict[str, Any],
+    auto_config: AutoConfigEngine,
+) -> dict[str, Any]:
+    """Parse and dispatch arm or disarm command."""
+    arm = bool(payload.get("arm", False))
+    await auto_config.arm_vehicle(sys_id, arm)
+    return {"system_id": sys_id, "armed": arm}
+
+
+async def _handle_set_flight_mode(
+    sys_id: int,
+    payload: dict[str, Any],
+    auto_config: AutoConfigEngine,
+) -> dict[str, Any]:
+    """Parse and dispatch flight mode change command."""
+    mode = str(payload.get("mode", "STABILIZE"))
+    await auto_config.set_mode(sys_id, mode)
+    return {"system_id": sys_id, "mode": mode}
+

@@ -207,7 +207,10 @@ class DroneMavlinkServer:
     def _handle_param_set(self, msg: Any) -> bytes | None:
         """Update parameter value and return encoded response."""
         raw_id = getattr(msg, "param_id", "")
-        p_id = raw_id.decode("utf-8", "ignore").rstrip("\x00") if isinstance(raw_id, bytes) else str(raw_id).rstrip("\x00")
+        if isinstance(raw_id, bytes):
+            p_id = raw_id.decode("utf-8", "ignore").rstrip("\x00")
+        else:
+            p_id = str(raw_id).rstrip("\x00")
         val = float(getattr(msg, "param_value", 0.0))
         for p in self._params:
             if p["param_id"] == p_id:

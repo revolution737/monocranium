@@ -5,8 +5,10 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from src.core.protocol import (
+    create_arm_disarm_msg,
     create_mav_connection,
     create_rc_override_msg,
+    create_set_mode_msg,
     parse_attitude,
     parse_battery,
     parse_gps,
@@ -188,3 +190,48 @@ def test_create_rc_override_msg_drone_4ch() -> None:
     assert msg.chan2_raw == 1580  # pitch
     assert msg.chan3_raw == 1650  # throttle
     assert msg.chan4_raw == 1510  # yaw
+
+
+def test_create_arm_disarm_msg_arm() -> None:
+    """Verify create_arm_disarm_msg encodes COMMAND_LONG with param1=1.0 when arming."""
+    msg = create_arm_disarm_msg(target_system=3, target_component=1, arm=True)
+    assert msg.target_system == 3
+    assert msg.target_component == 1
+    assert msg.command == 400
+    assert msg.param1 == 1.0
+
+
+def test_create_arm_disarm_msg_disarm() -> None:
+    """Verify create_arm_disarm_msg encodes COMMAND_LONG with param1=0.0 when disarming."""
+    msg = create_arm_disarm_msg(target_system=2, target_component=1, arm=False)
+    assert msg.target_system == 2
+    assert msg.target_component == 1
+    assert msg.command == 400
+    assert msg.param1 == 0.0
+
+
+def test_create_set_mode_msg_named_mode() -> None:
+    """Verify create_set_mode_msg resolves mode names (ALT_HOLD -> 2)."""
+    msg = create_set_mode_msg(target_system=3, target_component=1, mode="ALT_HOLD")
+    assert msg.target_system == 3
+    assert msg.target_component == 1
+    assert msg.command == 176
+    assert msg.param1 == 1.0
+    assert msg.param2 == 2.0
+
+
+def test_create_set_mode_msg_integer_mode() -> None:
+    """Verify create_set_mode_msg accepts raw integer mode IDs."""
+    msg = create_set_mode_msg(target_system=3, target_component=1, mode=5)
+    assert msg.target_system == 3
+    assert msg.target_component == 1
+    assert msg.command == 176
+    assert msg.param1 == 1.0
+    assert msg.param2 == 5.0
+
+
+def test_create_set_mode_msg_unknown_fallback() -> None:
+    """Verify create_set_mode_msg defaults to 0 for unknown string modes."""
+    msg = create_set_mode_msg(target_system=3, target_component=1, mode="UNKNOWN_CUSTOM")
+    assert msg.param2 == 0.0
+

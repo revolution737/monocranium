@@ -8,9 +8,11 @@ from typing import Any
 from src.core.connection import ConnectionManager, MavlinkConnection
 from src.core.parameter_store import ParameterStore
 from src.core.protocol import (
+    create_arm_disarm_msg,
     create_param_request_list_msg,
     create_param_set_msg,
     create_rc_override_msg,
+    create_set_mode_msg,
     parse_attitude,
     parse_battery,
     parse_gps,
@@ -227,3 +229,26 @@ class AutoConfigEngine:
         msg = create_param_set_msg(system_id, 1, param_id, value)
         for conn in self._conn_mgr.list_connections():
             await conn.send_message(msg)
+
+    async def arm_vehicle(self, system_id: int, arm: bool) -> None:
+        """Transmit arm or disarm command to vehicle.
+
+        Args:
+            system_id: Target vehicle system ID.
+            arm: True to arm vehicle motors, False to disarm.
+        """
+        msg = create_arm_disarm_msg(system_id, 1, arm)
+        for conn in self._conn_mgr.list_connections():
+            await conn.send_message(msg)
+
+    async def set_mode(self, system_id: int, mode: str | int) -> None:
+        """Transmit flight mode change command to vehicle.
+
+        Args:
+            system_id: Target vehicle system ID.
+            mode: Flight mode name or numeric mode identifier.
+        """
+        msg = create_set_mode_msg(system_id, 1, mode)
+        for conn in self._conn_mgr.list_connections():
+            await conn.send_message(msg)
+

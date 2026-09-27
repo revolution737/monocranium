@@ -24,6 +24,30 @@ BATT_VOLT_SCALE: float = 1000.0
 BATT_AMP_SCALE: float = 100.0
 NUM_RC_CHANNELS: int = 18
 
+MAV_CMD_COMPONENT_ARM_DISARM: int = 400
+MAV_CMD_DO_SET_MODE: int = 176
+MAV_MODE_FLAG_CUSTOM_MODE_ENABLED: int = 1
+ARM_PARAM_ENABLE: float = 1.0
+ARM_PARAM_DISABLE: float = 0.0
+
+COPTER_FLIGHT_MODES: dict[str, int] = {
+    "STABILIZE": 0,
+    "ACRO": 1,
+    "ALT_HOLD": 2,
+    "AUTO": 3,
+    "GUIDED": 4,
+    "LOITER": 5,
+    "RTL": 6,
+    "CIRCLE": 7,
+    "LAND": 9,
+    "DRIFT": 11,
+    "SPORT": 13,
+    "FLIP": 14,
+    "AUTOTUNE": 15,
+    "POSHOLD": 16,
+    "BRAKE": 17,
+}
+
 
 def parse_heartbeat(msg: Any, system_id: int, component_id: int) -> VehicleIdentity:
     """Parse a MAVLink HEARTBEAT message into a VehicleIdentity.
@@ -277,3 +301,71 @@ def create_rc_override_msg(
         0,
         0,
     )
+
+
+def create_arm_disarm_msg(
+    target_system: int,
+    target_component: int,
+    arm: bool,
+) -> Any:
+    """Generate MAVLink COMMAND_LONG packet to arm or disarm the vehicle.
+
+    Args:
+        target_system: Target MAVLink system ID.
+        target_component: Target MAVLink component ID.
+        arm: True to arm (1.0), False to disarm (0.0).
+
+    Returns:
+        MAVLink COMMAND_LONG message object.
+    """
+    mav = mavutil.mavlink.MAVLink(None)
+    param1 = ARM_PARAM_ENABLE if arm else ARM_PARAM_DISABLE
+    return mav.command_long_encode(
+        target_system,
+        target_component,
+        MAV_CMD_COMPONENT_ARM_DISARM,
+        0,
+        param1,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+    )
+
+
+def create_set_mode_msg(
+    target_system: int,
+    target_component: int,
+    mode: str | int,
+) -> Any:
+    """Generate MAVLink COMMAND_LONG packet to set vehicle flight mode.
+
+    Args:
+        target_system: Target MAVLink system ID.
+        target_component: Target MAVLink component ID.
+        mode: Flight mode name string or integer mode number.
+
+    Returns:
+        MAVLink COMMAND_LONG message object.
+    """
+    mav = mavutil.mavlink.MAVLink(None)
+    if isinstance(mode, str):
+        mode_num = COPTER_FLIGHT_MODES.get(mode.upper(), 0)
+    else:
+        mode_num = int(mode)
+    return mav.command_long_encode(
+        target_system,
+        target_component,
+        MAV_CMD_DO_SET_MODE,
+        0,
+        float(MAV_MODE_FLAG_CUSTOM_MODE_ENABLED),
+        float(mode_num),
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+    )
+

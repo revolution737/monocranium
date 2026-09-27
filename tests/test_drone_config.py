@@ -6,7 +6,6 @@ import pytest
 
 from src.simulators.drone_config import (
     DEFAULT_DRONE_CONFIG,
-    DroneHardwareConfig,
     build_default_drone_parameters,
 )
 

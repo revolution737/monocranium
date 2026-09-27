@@ -101,4 +101,25 @@ Format for each entry:
 - **Consequences**: Both Rover (port 5770, sysid 2) and ArduPilot Copter (port 5771, sysid 3) can be simulated and controlled simultaneously or individually. Test suite expanded from 76 to 101 tests, all passing cleanly.
 - **Alternatives Considered**: (1) Create separate core bridges for rovers and copters — rejected as violating Monocranium's unified "one brain to rule them all" philosophy; (2) Modify core types to include vehicle-specific flight fields — rejected as violation of Rule 7 in AGENTS.md; (3) Allow direct pymavlink usage in drone physics — rejected as violation of Rule 6 quarantine.
 
+---
+
+## DECISION-010: Arm/Disarm and Flight Mode Command Architecture
+
+- **Date**: 2026-09-27
+- **Context**: Real ArduPilot vehicles start disarmed and ignore RC overrides until armed in an RC-accepting flight mode. The mock simulator had no arm/disarm or mode support.
+- **Decision**: (1) Add `create_arm_disarm_msg()` and `create_set_mode_msg()` factory functions in `protocol.py` generating MAVLink COMMAND_LONG packets (MAV_CMD_COMPONENT_ARM_DISARM=400 and MAV_CMD_DO_SET_MODE=176). (2) Expose `arm_vehicle()` and `set_mode()` on `AutoConfigEngine`. (3) Wire `arm_vehicle` and `set_flight_mode` WebSocket actions in `ws_handlers.py`. (4) Add ARM/DISARM toggle and flight mode dropdown to dashboard copter view. Constants for ArduPilot Copter flight modes (STABILIZE through BRAKE) defined as a dict in `protocol.py`.
+- **Rationale**: Follows existing quarantine boundary — all pymavlink usage stays in protocol.py. COMMAND_LONG is the standard MAVLink command for arming and mode changes. Dashboard controls are copter-only (rovers don't need arming in most configurations).
+- **Alternatives Considered**: (1) Use SET_MODE message instead of COMMAND_LONG — rejected because COMMAND_LONG is the recommended approach for ArduPilot. (2) Auto-arm on first RC override — rejected as unsafe.
+
+---
+
+## DECISION-011: Multi-Vehicle Telemetry Filtering by Active System ID
+
+- **Date**: 2026-09-27
+- **Context**: When both rover (SYSID 2) and drone (SYSID 3) simulators are connected, the dashboard telemetry gauges flickered between values from both vehicles because `useTelemetry.js` did not filter incoming telemetry events by the active vehicle.
+- **Decision**: Add a `system_id` check against `activeSystemId` in the telemetry event handler for `telemetry.attitude`, `telemetry.gps`, `telemetry.battery`, and `telemetry.rc` events. Events from non-active vehicles are silently dropped.
+- **Rationale**: Simple and effective. The telemetry bus already includes `system_id` in every event payload. No backend changes needed.
+- **Alternatives Considered**: (1) Maintain separate telemetry state per vehicle — rejected as premature complexity for a single-view dashboard.
+
+
 

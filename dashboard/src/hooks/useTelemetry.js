@@ -85,6 +85,7 @@ export function useTelemetry(ws) {
       } else if (event === 'param.bulk_loaded') {
         sendMessage({ action: 'get_parameters', system_id: data.system_id });
       } else if (event === 'telemetry.attitude') {
+        if (data.system_id && data.system_id !== activeSystemId) return;
         setTelemetry((prev) => {
           const newHistory = [
             ...prev.history,
@@ -98,6 +99,7 @@ export function useTelemetry(ws) {
           };
         });
       } else if (event === 'telemetry.gps') {
+        if (data.system_id && data.system_id !== activeSystemId) return;
         setTelemetry((prev) => ({
           ...prev,
           gps: {
@@ -109,6 +111,7 @@ export function useTelemetry(ws) {
           },
         }));
       } else if (event === 'telemetry.battery') {
+        if (data.system_id && data.system_id !== activeSystemId) return;
         setTelemetry((prev) => ({
           ...prev,
           battery: {
@@ -118,6 +121,7 @@ export function useTelemetry(ws) {
           },
         }));
       } else if (event === 'telemetry.rc') {
+        if (data.system_id && data.system_id !== activeSystemId) return;
         setTelemetry((prev) => ({
           ...prev,
           rc: data.channels || prev.rc,
@@ -184,6 +188,28 @@ export function useTelemetry(ws) {
     [sendMessage]
   );
 
+  const armVehicle = useCallback(
+    (arm) => {
+      return sendMessage({
+        action: 'arm_vehicle',
+        system_id: activeSystemId,
+        payload: { arm },
+      });
+    },
+    [activeSystemId, sendMessage]
+  );
+
+  const setFlightMode = useCallback(
+    (mode) => {
+      return sendMessage({
+        action: 'set_flight_mode',
+        system_id: activeSystemId,
+        payload: { mode },
+      });
+    },
+    [activeSystemId, sendMessage]
+  );
+
   return {
     vehicles,
     activeSystemId,
@@ -196,5 +222,7 @@ export function useTelemetry(ws) {
     setParameter,
     refreshParameters,
     runAutoConfig,
+    armVehicle,
+    setFlightMode,
   };
 }

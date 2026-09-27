@@ -22,6 +22,8 @@ export default function App() {
     setParameter,
     refreshParameters,
     runAutoConfig,
+    armVehicle,
+    setFlightMode,
   } = useTelemetry(ws);
 
   const activeVehicle = vehicles.find((v) => v.system_id === activeSystemId) || vehicles[0];
@@ -71,6 +73,8 @@ export default function App() {
               logs={logs}
               onSendRcOverride={sendRcOverride}
               activeVehicle={activeVehicle}
+              onArmVehicle={armVehicle}
+              onSetFlightMode={setFlightMode}
             />
           )}
 
