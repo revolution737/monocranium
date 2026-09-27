@@ -70,3 +70,5 @@ dashboard/dist-ssr/
 # Operating System files
 .DS_Store
 Thumbs.db
+eeprom.bin
+terrain/
