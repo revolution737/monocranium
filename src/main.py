@@ -20,10 +20,24 @@ logger = logging.getLogger(__name__)
 def parse_args() -> argparse.Namespace:
     """Parse command-line arguments for the Monocranium Core Bridge."""
     parser = argparse.ArgumentParser(description="Monocranium Core Bridge")
-    parser.add_argument("--rover-host", type=str, default="127.0.0.1", help="Rover TCP host")
-    parser.add_argument("--rover-port", type=int, default=5770, help="Rover TCP port")
-    parser.add_argument("--drone-host", type=str, default="127.0.0.1", help="Drone TCP host")
-    parser.add_argument("--drone-port", type=int, default=5771, help="Drone TCP port")
+    parser.add_argument("--rover-host", type=str, default="127.0.0.1", help="Rover MAVLink host")
+    parser.add_argument("--rover-port", type=int, default=5770, help="Rover MAVLink port")
+    parser.add_argument(
+        "--rover-protocol",
+        type=str,
+        choices=["tcp", "udp"],
+        default="tcp",
+        help="Rover MAVLink protocol",
+    )
+    parser.add_argument("--drone-host", type=str, default="127.0.0.1", help="Drone MAVLink host")
+    parser.add_argument("--drone-port", type=int, default=5771, help="Drone MAVLink port")
+    parser.add_argument(
+        "--drone-protocol",
+        type=str,
+        choices=["tcp", "udp"],
+        default="tcp",
+        help="Drone MAVLink protocol",
+    )
     parser.add_argument("--ws-port", type=int, default=8765, help="WebSocket server port")
     parser.add_argument("--http-port", type=int, default=8080, help="HTTP dashboard port")
     return parser.parse_args()
@@ -58,8 +72,8 @@ async def run_bridge(args: argparse.Namespace, stop_event: asyncio.Event) -> Non
     await ws_server.start()
 
     endpoints = [
-        ConnectionEndpoint(args.rover_host, args.rover_port, "tcp"),
-        ConnectionEndpoint(args.drone_host, args.drone_port, "tcp"),
+        ConnectionEndpoint(args.rover_host, args.rover_port, args.rover_protocol),
+        ConnectionEndpoint(args.drone_host, args.drone_port, args.drone_protocol),
     ]
     logger.info("Core Bridge running: WS port %d, HTTP port %d", args.ws_port, args.http_port)
     asyncio.create_task(auto_config.run_full_scan(endpoints))
