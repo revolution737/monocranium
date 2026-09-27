@@ -1,11 +1,19 @@
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import MagicMock
 
+from src.core.protocol import get_simulator_mavlink_dialect
 from src.core.types import ConnectionEndpoint
 from src.simulators.drone_config import DEFAULT_DRONE_CONFIG
 from src.simulators.drone_physics import DroneKinematics
 from src.simulators.drone_sim import DroneMavlinkServer
+
+
+def _decode_frame(frame: bytes) -> Any:
+    """Decode one simulator frame through the protocol-owned dialect factory."""
+    dialect = get_simulator_mavlink_dialect()
+    return dialect.MAVLink(None).parse_buffer(frame)[0]
 
 
 def test_drone_sim_initial_state() -> None:
@@ -131,4 +139,58 @@ def test_drone_handle_param_set_unknown() -> None:
 
     reply = server._handle_param_set(mock_msg)
     assert reply is None
+
+
+def test_drone_arm_command_updates_heartbeat_and_acknowledges() -> None:
+    """The simulator reports the new armed state and acknowledges a valid command."""
+    from src.core.protocol import MAV_CMD_COMPONENT_ARM_DISARM
+
+    server = DroneMavlinkServer(DroneKinematics(DEFAULT_DRONE_CONFIG), DEFAULT_DRONE_CONFIG)
+    command = MagicMock(command=MAV_CMD_COMPONENT_ARM_DISARM, param1=1.0)
+
+    reply = server._handle_command_long(command)
+
+    assert reply is not None
+    assert _decode_frame(reply).result == 0
+    assert server._armed is True
+    assert _decode_frame(server._create_heartbeat_bytes()).base_mode & 128
+
+
+def test_drone_unsupported_command_is_rejected_without_state_change() -> None:
+    """Unknown commands receive a negative acknowledgement."""
+    server = DroneMavlinkServer(DroneKinematics(DEFAULT_DRONE_CONFIG), DEFAULT_DRONE_CONFIG)
+
+    reply = server._handle_command_long(MagicMock(command=9999))
+
+    assert reply is not None
+    assert _decode_frame(reply).result == 3
+    assert server._armed is False
+
+
+def test_drone_mode_command_updates_heartbeat() -> None:
+    """Accepted flight modes appear in subsequent heartbeats."""
+    from src.core.protocol import MAV_CMD_DO_SET_MODE
+
+    server = DroneMavlinkServer(DroneKinematics(DEFAULT_DRONE_CONFIG), DEFAULT_DRONE_CONFIG)
+    reply = server._handle_command_long(
+        MagicMock(command=MAV_CMD_DO_SET_MODE, param2=2.0),
+    )
+
+    assert reply is not None
+    assert _decode_frame(reply).result == 0
+    assert _decode_frame(server._create_heartbeat_bytes()).custom_mode == 2
+
+
+def test_drone_invalid_mode_is_denied() -> None:
+    """Invalid modes preserve simulator state and return a denial."""
+    from src.core.protocol import MAV_CMD_DO_SET_MODE
+
+    server = DroneMavlinkServer(DroneKinematics(DEFAULT_DRONE_CONFIG), DEFAULT_DRONE_CONFIG)
+    reply = server._handle_command_long(
+        MagicMock(command=MAV_CMD_DO_SET_MODE, param2=999.0),
+    )
+
+    assert reply is not None
+    assert _decode_frame(reply).result == 2
+    assert _decode_frame(server._create_heartbeat_bytes()).custom_mode == 0
 

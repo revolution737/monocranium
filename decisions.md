@@ -178,5 +178,15 @@ Format for each entry:
 - **Decision**: Dispatch each parsed WebSocket frame to subscribers, keep connection lifecycle notifications separate, expose the simulator MAVLink dialect through `protocol.py`, and move rover frame timing into `rover_renderer.py`. Add an optional isolated SITL instance to the launcher for concurrent real-SITL verification.
 - **Rationale**: Per-frame dispatch preserves telemetry without polling. The protocol and rendering owners remain the only direct import locations for their restricted libraries.
 
+---
+
+## DECISION-017: Acknowledge Flight Commands in the Python Drone Simulator
+
+- **Date**: 2026-09-27
+- **Author**: Aditi
+- **Context**: The dashboard now waits for a `COMMAND_ACK` before reporting ARM/DISARM or flight-mode success. The offline drone simulator previously ignored `COMMAND_LONG`, causing those actions to time out even though real ArduPilot handled them.
+- **Decision**: Make the simulator acknowledge supported arm and Copter mode commands, reflect accepted state in subsequent heartbeats, and reject unsupported or invalid commands without changing state.
+- **Rationale**: The existing simulator remains compatible with confirmed command handling, while the dashboard displays a state derived from MAVLink heartbeats.
+
 
 

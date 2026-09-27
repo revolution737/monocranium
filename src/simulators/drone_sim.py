@@ -6,7 +6,13 @@ import math
 import time
 from typing import Any
 
-from src.core.protocol import get_simulator_mavlink_dialect
+from src.core.protocol import (
+    COPTER_FLIGHT_MODES,
+    MAV_CMD_COMPONENT_ARM_DISARM,
+    MAV_CMD_DO_SET_MODE,
+    MAV_MODE_FLAG_SAFETY_ARMED,
+    get_simulator_mavlink_dialect,
+)
 from src.core.types import ConnectionEndpoint
 from src.simulators.drone_config import (
     DroneHardwareConfig,
@@ -30,6 +36,9 @@ MAV_STATE_ACTIVE: int = 4
 BATTERY_CURRENT_CENTIAMPS: int = 450
 BATTERY_PERCENT_DEFAULT: int = 95
 GPS_SATELLITES_COUNT: int = 14
+MAV_RESULT_ACCEPTED: int = 0
+MAV_RESULT_DENIED: int = 2
+MAV_RESULT_UNSUPPORTED: int = 3
 
 
 class DroneMavlinkServer:
@@ -48,6 +57,8 @@ class DroneMavlinkServer:
         self._port = port
         self._system_id = system_id
         self._component_id = DEFAULT_COMPONENT_ID
+        self._armed = False
+        self._flight_mode = COPTER_FLIGHT_MODES["STABILIZE"]
 
         self._roll_pwm: int = config.pwm_center
         self._pitch_pwm: int = config.pwm_center
@@ -89,8 +100,8 @@ class DroneMavlinkServer:
         msg = self._mav.heartbeat_encode(
             type=MAV_TYPE_QUADROTOR,
             autopilot=MAV_AUTOPILOT_ARDUPILOTMEGA,
-            base_mode=0,
-            custom_mode=0,
+            base_mode=MAV_MODE_FLAG_SAFETY_ARMED if self._armed else 0,
+            custom_mode=self._flight_mode,
             system_status=MAV_STATE_ACTIVE,
         )
         return bytes(msg.pack(self._mav))
@@ -222,6 +233,27 @@ class DroneMavlinkServer:
         """Generate encoded PARAM_VALUE frames for all parameters."""
         return [self._create_param_value_bytes(p) for p in self._params]
 
+    def _handle_command_long(self, msg: Any) -> bytes:
+        """Apply supported mock flight commands and acknowledge the result."""
+        command = int(msg.command)
+        result = MAV_RESULT_UNSUPPORTED
+        if command == MAV_CMD_COMPONENT_ARM_DISARM:
+            arm_value = float(msg.param1)
+            if arm_value in (0.0, 1.0):
+                self._armed = arm_value == 1.0
+                result = MAV_RESULT_ACCEPTED
+            else:
+                result = MAV_RESULT_DENIED
+        elif command == MAV_CMD_DO_SET_MODE:
+            mode_value = float(msg.param2)
+            if mode_value.is_integer() and int(mode_value) in COPTER_FLIGHT_MODES.values():
+                self._flight_mode = int(mode_value)
+                result = MAV_RESULT_ACCEPTED
+            else:
+                result = MAV_RESULT_DENIED
+        ack = self._mav.command_ack_encode(command, result)
+        return bytes(ack.pack(self._mav))
+
     async def _broadcast(self, data: bytes) -> None:
         """Broadcast byte buffer to active TCP client connections."""
         for writer in list(self._clients):
@@ -311,6 +343,9 @@ class DroneMavlinkServer:
                 if reply:
                     writer.write(reply)
                     await writer.drain()
+            elif mtype == "COMMAND_LONG":
+                writer.write(self._handle_command_long(msg))
+                await writer.drain()
 
     async def start(self) -> None:
         """Start drone TCP server and background tasks."""
