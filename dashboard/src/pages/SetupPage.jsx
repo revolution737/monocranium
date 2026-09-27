@@ -1,10 +1,8 @@
 import React, { useState } from 'react';
 
 export function SetupPage({
-  vehicles = [],
   activeVehicle,
   onRunAutoConfig,
-  connectionStatus = [],
 }) {
   const [host, setHost] = useState('127.0.0.1');
   const [port, setPort] = useState(5770);

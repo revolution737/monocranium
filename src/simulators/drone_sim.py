@@ -6,8 +6,7 @@ import math
 import time
 from typing import Any
 
-from pymavlink.dialects.v20 import ardupilotmega as mavlink2
-
+from src.core.protocol import get_simulator_mavlink_dialect
 from src.core.types import ConnectionEndpoint
 from src.simulators.drone_config import (
     DroneHardwareConfig,
@@ -15,6 +14,7 @@ from src.simulators.drone_config import (
 )
 from src.simulators.drone_physics import DroneKinematics
 
+mavlink2 = get_simulator_mavlink_dialect()
 logger = logging.getLogger(__name__)
 
 DEFAULT_PORT: int = 5771

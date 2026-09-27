@@ -14,6 +14,8 @@ HEARTBEAT_TIMEOUT_S: float = 5.0
 HEARTBEAT_DISCONNECT_S: float = 15.0
 CONNECT_TIMEOUT_S: float = 10.0
 READ_LOOP_SLEEP_S: float = 0.01
+MAX_MESSAGES_PER_POLL: int = 100
+RECONNECT_DELAY_S: float = 2.0
 
 MessageHandler = Callable[[Any], Coroutine[Any, Any, None]]
 StateHandler = Callable[[ConnectionState], Coroutine[Any, Any, None]]
@@ -31,6 +33,7 @@ class MavlinkConnection:
         self._endpoint = endpoint
         self._state = ConnectionState.DISCONNECTED
         self._last_heartbeat_time: float = 0.0
+        self._connect_started_at: float = 0.0
         self._mav_conn: Any | None = None
         self._read_task: asyncio.Task[None] | None = None
         self._monitor_task: asyncio.Task[None] | None = None
@@ -84,6 +87,7 @@ class MavlinkConnection:
             True if connection initialized successfully.
         """
         await self._set_state(ConnectionState.CONNECTING)
+        self._connect_started_at = time.time()
         try:
             self._mav_conn = create_mav_connection(self._endpoint)
             self._read_task = asyncio.create_task(self._read_loop())
@@ -119,16 +123,21 @@ class MavlinkConnection:
         Args:
             msg: MAVLink message to transmit.
         """
-        if self._mav_conn and hasattr(self._mav_conn, "mav"):
-            self._mav_conn.mav.send(msg)
+        if self._state not in (ConnectionState.CONNECTING, ConnectionState.CONNECTED):
+            raise ConnectionError("MAVLink connection is not active")
+        if self._mav_conn is None or not hasattr(self._mav_conn, "mav"):
+            raise ConnectionError("MAVLink socket is unavailable")
+        self._mav_conn.mav.send(msg)
 
     async def _read_loop(self) -> None:
         """Asynchronously poll for incoming messages."""
         while True:
             try:
                 if self._mav_conn is not None:
-                    msg = self._mav_conn.recv_msg()
-                    if msg is not None:
+                    for _ in range(MAX_MESSAGES_PER_POLL):
+                        msg = self._mav_conn.recv_msg()
+                        if msg is None:
+                            break
                         await self._process_received_msg(msg)
                 await asyncio.sleep(READ_LOOP_SLEEP_S)
             except asyncio.CancelledError:
@@ -141,6 +150,12 @@ class MavlinkConnection:
     async def _process_received_msg(self, msg: Any) -> None:
         """Handle incoming message and update heartbeat tracker."""
         msg_type = getattr(msg, "get_type", lambda: "")()
+        logger.info(
+            "MAVLink received %s from %s:%d",
+            msg_type,
+            self._endpoint.address,
+            self._endpoint.port,
+        )
         if msg_type == "HEARTBEAT":
             self._last_heartbeat_time = time.time()
             if self._state != ConnectionState.CONNECTED:
@@ -163,6 +178,9 @@ class MavlinkConnection:
                 elif self._state == ConnectionState.HEARTBEAT_LOST:
                     if time.time() - self._last_heartbeat_time > HEARTBEAT_DISCONNECT_S:
                         await self._set_state(ConnectionState.DISCONNECTED)
+                elif self._state == ConnectionState.CONNECTING:
+                    if time.time() - self._connect_started_at > CONNECT_TIMEOUT_S:
+                        await self._set_state(ConnectionState.DISCONNECTED)
             except asyncio.CancelledError:
                 break
 
@@ -173,6 +191,27 @@ class ConnectionManager:
     def __init__(self) -> None:
         """Initialise connection manager with empty pool."""
         self._connections: dict[tuple[str, int], MavlinkConnection] = {}
+        self._retry_tasks: dict[tuple[str, int], asyncio.Task[None]] = {}
+
+    async def _on_state_change(
+        self, key: tuple[str, int], state: ConnectionState,
+    ) -> None:
+        if state != ConnectionState.DISCONNECTED or key not in self._connections:
+            return
+        retry = self._retry_tasks.get(key)
+        if retry is None or retry.done():
+            self._retry_tasks[key] = asyncio.create_task(self._reconnect(key))
+
+    async def _reconnect(self, key: tuple[str, int]) -> None:
+        attempt = 0
+        while key in self._connections:
+            if attempt:
+                await asyncio.sleep(RECONNECT_DELAY_S)
+            conn = self._connections[key]
+            await conn.disconnect()
+            if await conn.connect():
+                return
+            attempt += 1
 
     async def add_connection(self, endpoint: ConnectionEndpoint) -> MavlinkConnection:
         """Add and connect a new endpoint.
@@ -189,6 +228,9 @@ class ConnectionManager:
 
         conn = MavlinkConnection(endpoint)
         self._connections[key] = conn
+        async def state_changed(state: ConnectionState) -> None:
+            await self._on_state_change(key, state)
+        conn.on_state_change(state_changed)
         await conn.connect()
         return conn
 
@@ -200,6 +242,9 @@ class ConnectionManager:
         """
         key = (endpoint.address, endpoint.port)
         conn = self._connections.pop(key, None)
+        retry = self._retry_tasks.pop(key, None)
+        if retry is not None:
+            retry.cancel()
         if conn:
             await conn.disconnect()
 
@@ -224,6 +269,5 @@ class ConnectionManager:
 
     async def close_all(self) -> None:
         """Disconnect and clear all managed connections."""
-        for conn in list(self._connections.values()):
-            await conn.disconnect()
-        self._connections.clear()
+        for endpoint in [conn.endpoint for conn in self._connections.values()]:
+            await self.remove_connection(endpoint)

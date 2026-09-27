@@ -4,7 +4,7 @@ import { ResponsiveContainer, LineChart, Line } from 'recharts';
 export function TelemetryGauge({ title, value, unit, history = [], color = '#58a6ff', dataKey = 'value' }) {
   const chartData = history.map((pt, i) => ({
     i,
-    value: typeof pt === 'object' ? pt[dataKey] ?? 0 : pt,
+    value: typeof pt === 'object' ? pt[dataKey] ?? null : pt,
   }));
 
   return (

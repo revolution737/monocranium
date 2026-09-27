@@ -1,26 +1,128 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from src.core.protocol import (
     create_arm_disarm_msg,
+    create_data_stream_msg,
     create_mav_connection,
+    create_message_interval_msg,
     create_rc_override_msg,
     create_set_mode_msg,
+    get_simulator_mavlink_dialect,
     parse_attitude,
     parse_battery,
+    parse_global_position,
     parse_gps,
     parse_heartbeat,
     parse_param_value,
     parse_rc_channels,
+    parse_vehicle_status,
+    parse_vfr_hud,
 )
-from src.core.types import (
-    AutopilotType,
-    ConnectionEndpoint,
-    VehicleType,
-)
+from src.core.types import AutopilotType, ConnectionEndpoint, VehicleType
+
+
+def test_parse_vehicle_status_from_heartbeat() -> None:
+    """The armed flag and mode reflect autopilot heartbeat fields."""
+    assert parse_vehicle_status(SimpleNamespace(base_mode=128, custom_mode=5, autopilot=3), 1) == {
+        "system_id": 1, "armed": True, "mode": "LOITER",
+    }
+
+
+def test_parse_vehicle_status_requires_fields() -> None:
+    """Incomplete heartbeats do not create a false command state."""
+    with pytest.raises(ValueError):
+        parse_vehicle_status(SimpleNamespace(base_mode=0), 1)
+
+
+def test_parse_vehicle_status_preserves_unknown_autopilot_mode() -> None:
+    """A PX4 custom mode number must not be labeled as an ArduPilot mode."""
+    assert parse_vehicle_status(
+        SimpleNamespace(base_mode=0, custom_mode=5, autopilot=12), 2,
+    )["mode"] == "5"
+
+
+def test_simulator_dialect_exposes_message_classes() -> None:
+    """Simulator packet synthesis uses the protocol-owned MAVLink dialect."""
+    assert hasattr(get_simulator_mavlink_dialect(), "MAVLink")
+
+
+def test_simulator_dialect_is_shared() -> None:
+    """The factory consistently returns one dialect module."""
+    assert get_simulator_mavlink_dialect() is get_simulator_mavlink_dialect()
+
+
+def test_message_interval_packet() -> None:
+    """Encode a 10 Hz targeted ATTITUDE request in microseconds."""
+    msg = create_message_interval_msg(1, 1, 30, 10)
+    assert (msg.command, msg.target_system, msg.target_component) == (511, 1, 1)
+    assert (msg.param1, msg.param2) == (30, 100000)
+
+
+def test_message_interval_rejects_invalid_rate() -> None:
+    """Prevent invalid rate requests from reaching the transport."""
+    with pytest.raises(ValueError):
+        create_message_interval_msg(1, 1, 30, 0)
+
+
+def test_legacy_stream_packet() -> None:
+    """Legacy fallback enables the targeted EXTRA1 group."""
+    msg = create_data_stream_msg(7, 1, 10, 10)
+    assert (msg.target_system, msg.req_stream_id, msg.req_message_rate) == (7, 10, 10)
+    assert msg.start_stop == 1
+
+
+def test_legacy_stream_rejects_invalid_rate() -> None:
+    """Reject a negative legacy stream rate."""
+    with pytest.raises(ValueError):
+        create_data_stream_msg(1, 1, 10, -1)
+
+
+def test_global_position_units() -> None:
+    """Convert position and horizontal velocity into dashboard units."""
+    msg = SimpleNamespace(lat=10000000, lon=20000000, alt=120000, relative_alt=3000,
+                          vx=300, vy=400)
+    assert parse_global_position(msg) == {
+        "lat": 1.0, "lon": 2.0, "alt": 120.0, "relative_alt": 3.0, "speed": 5.0,
+    }
+
+
+def test_global_position_missing_fields() -> None:
+    """Malformed position frames fail explicitly."""
+    with pytest.raises(ValueError):
+        parse_global_position(SimpleNamespace(lat=0))
+
+
+def test_vfr_hud_units() -> None:
+    """HUD altitude is MSL metres and groundspeed is metres per second."""
+    assert parse_vfr_hud(SimpleNamespace(groundspeed=4, alt=120, climb=2)) == {
+        "speed": 4.0, "alt": 120.0, "climb": 2.0,
+    }
+
+
+def test_vfr_hud_missing_fields() -> None:
+    """Malformed HUD frames fail explicitly."""
+    with pytest.raises(ValueError):
+        parse_vfr_hud(SimpleNamespace())
+
+
+def test_battery_status_cell_voltages() -> None:
+    """BATTERY_STATUS cell voltages exclude unused UINT16_MAX entries."""
+    msg = SimpleNamespace(voltages=[4000, 4100, 65535], current_battery=125,
+                          battery_remaining=80)
+    battery = parse_battery(msg)
+    assert battery.voltage == 8.1
+    assert battery.current == 1.25
+
+
+def test_battery_status_unknown_voltage() -> None:
+    """Unknown cell voltages remain an unknown sentinel, not 655 volts."""
+    msg = SimpleNamespace(voltages=[65535], current_battery=-1, battery_remaining=-1)
+    assert parse_battery(msg).voltage == -1
 
 
 def test_parse_heartbeat_rover() -> None:
@@ -230,8 +332,8 @@ def test_create_set_mode_msg_integer_mode() -> None:
     assert msg.param2 == 5.0
 
 
-def test_create_set_mode_msg_unknown_fallback() -> None:
-    """Verify create_set_mode_msg defaults to 0 for unknown string modes."""
-    msg = create_set_mode_msg(target_system=3, target_component=1, mode="UNKNOWN_CUSTOM")
-    assert msg.param2 == 0.0
+def test_create_set_mode_msg_rejects_unknown_name() -> None:
+    """An invalid mode must never silently switch a copter to STABILIZE."""
+    with pytest.raises(ValueError, match="Unknown flight mode"):
+        create_set_mode_msg(target_system=3, target_component=1, mode="UNKNOWN_CUSTOM")
 

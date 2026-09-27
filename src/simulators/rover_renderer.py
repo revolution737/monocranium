@@ -165,6 +165,12 @@ class RoverRenderer:
 
         return (True, {"throttle_pwm": throttle, "steering_pwm": steering})
 
+    def tick(self, target_fps: int) -> float:
+        """Advance the pygame clock and return elapsed time in seconds."""
+        if target_fps <= 0:
+            raise ValueError("target_fps must be positive")
+        return float(self._clock.tick(target_fps)) / 1000.0
+
     def cleanup(self) -> None:
         """Shut down pygame graphics and release window."""
         pygame.quit()

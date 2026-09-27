@@ -5,15 +5,16 @@ const RECONNECT_MAX_MS = 30000;
 
 export function useWebSocket(url) {
   const [isConnected, setIsConnected] = useState(false);
-  const [lastMessage, setLastMessage] = useState(null);
   const wsRef = useRef(null);
+  const messageListenersRef = useRef(new Set());
+  const connectionListenersRef = useRef(new Set());
   const reconnectTimeoutRef = useRef(null);
   const backoffRef = useRef(RECONNECT_BASE_MS);
   const isMountedRef = useRef(true);
 
   const defaultUrl = url || `ws://${window.location.hostname || 'localhost'}:8765`;
 
-  const connect = useCallback(() => {
+  const connect = useCallback(function openSocket() {
     if (!isMountedRef.current) return;
 
     try {
@@ -21,29 +22,31 @@ export function useWebSocket(url) {
       wsRef.current = ws;
 
       ws.onopen = () => {
-        if (!isMountedRef.current) return;
+        if (!isMountedRef.current || wsRef.current !== ws) return;
         setIsConnected(true);
         backoffRef.current = RECONNECT_BASE_MS;
+        connectionListenersRef.current.forEach((listener) => listener(true));
       };
 
       ws.onmessage = (event) => {
-        if (!isMountedRef.current) return;
+        if (!isMountedRef.current || wsRef.current !== ws) return;
         try {
           const parsed = JSON.parse(event.data);
-          setLastMessage(parsed);
+          messageListenersRef.current.forEach((listener) => listener(parsed));
         } catch {
           // ignore non-json messages
         }
       };
 
       ws.onclose = () => {
-        if (!isMountedRef.current) return;
+        if (!isMountedRef.current || wsRef.current !== ws) return;
         setIsConnected(false);
         wsRef.current = null;
+        connectionListenersRef.current.forEach((listener) => listener(false));
 
         const delay = backoffRef.current;
         backoffRef.current = Math.min(delay * 2, RECONNECT_MAX_MS);
-        reconnectTimeoutRef.current = setTimeout(connect, delay);
+        reconnectTimeoutRef.current = setTimeout(openSocket, delay);
       };
 
       ws.onerror = () => {
@@ -52,7 +55,7 @@ export function useWebSocket(url) {
         }
       };
     } catch {
-      reconnectTimeoutRef.current = setTimeout(connect, backoffRef.current);
+      reconnectTimeoutRef.current = setTimeout(openSocket, backoffRef.current);
     }
   }, [defaultUrl]);
 
@@ -79,5 +82,15 @@ export function useWebSocket(url) {
     return false;
   }, []);
 
-  return { isConnected, sendMessage, lastMessage };
+  const subscribeMessage = useCallback((listener) => {
+    messageListenersRef.current.add(listener);
+    return () => messageListenersRef.current.delete(listener);
+  }, []);
+
+  const subscribeConnection = useCallback((listener) => {
+    connectionListenersRef.current.add(listener);
+    return () => connectionListenersRef.current.delete(listener);
+  }, []);
+
+  return { isConnected, sendMessage, subscribeMessage, subscribeConnection };
 }

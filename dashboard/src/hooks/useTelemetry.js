@@ -1,34 +1,46 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 const MAX_LOGS = 200;
 const MAX_HISTORY_POINTS = 30;
 
+const emptyTelemetry = () => ({
+  attitude: { roll: null, pitch: null, yaw: null },
+  gps: { lat: null, lon: null, alt: null, fix_type: null, satellites: null },
+  battery: { voltage: null, current: null, remaining: null },
+  rc: [],
+  speed: null,
+  history: [],
+});
+
 export function useTelemetry(ws) {
-  const { isConnected, sendMessage, lastMessage } = ws;
+  const { isConnected, sendMessage, subscribeMessage, subscribeConnection } = ws;
 
   const [vehicles, setVehicles] = useState([]);
-  const [activeSystemId, setActiveSystemId] = useState(2);
+  const [activeSystemId, setActiveSystemId] = useState(null);
+  const [statusBySystem, setStatusBySystem] = useState({});
   const [parameters, setParameters] = useState([]);
   const [connectionStatus, setConnectionStatus] = useState([]);
   const [logs, setLogs] = useState([]);
 
-  const [telemetry, setTelemetry] = useState({
-    attitude: { roll: 0, pitch: 0, yaw: 0 },
-    gps: { lat: 28.6139, lon: 77.2090, alt: 0, fix_type: 3, satellites: 12 },
-    battery: { voltage: 11.1, current: 0.0, remaining: 100 },
-    rc: [1500, 1500, 1500, 1500],
-    speed: 0.0,
-    history: [],
-  });
+  const [telemetry, setTelemetry] = useState(emptyTelemetry);
+
+  const selectVehicle = useCallback((systemId) => {
+    setActiveSystemId(systemId);
+    setTelemetry(emptyTelemetry());
+  }, []);
 
   const appendLog = useCallback((text, type = 'info') => {
     const timestamp = new Date().toLocaleTimeString();
     setLogs((prev) => [{ id: Date.now() + Math.random(), time: timestamp, text, type }, ...prev].slice(0, MAX_LOGS));
   }, []);
 
-  // Handle incoming messages
+  // Process every WebSocket frame, including bursts of parameter updates.
   useEffect(() => {
-    if (!lastMessage) return;
+    const handleMessage = (lastMessage) => {
+
+    if (lastMessage.event?.startsWith('telemetry.')) {
+      console.info('useTelemetry received', lastMessage.event, lastMessage.data);
+    }
 
     // Handle responses to request actions
     if (lastMessage.response_to) {
@@ -41,7 +53,7 @@ export function useTelemetry(ws) {
       if (response_to === 'get_vehicles') {
         setVehicles(data || []);
         if (data && data.length > 0 && !data.some((v) => v.system_id === activeSystemId)) {
-          setActiveSystemId(data[0].system_id);
+          selectVehicle(data[0].system_id);
         }
       } else if (response_to === 'get_parameters') {
         setParameters(data || []);
@@ -68,13 +80,25 @@ export function useTelemetry(ws) {
           const exists = prev.some((v) => v.system_id === data.system_id);
           return exists ? prev.map((v) => (v.system_id === data.system_id ? data : v)) : [...prev, data];
         });
-        setActiveSystemId((prev) => (prev === 2 || !prev ? data.system_id : prev));
+        if (!activeSystemId) selectVehicle(data.system_id);
         appendLog(`Vehicle discovered: SYSID ${data.system_id} (${data.vehicle_type})`, 'success');
       } else if (event === 'vehicle.updated') {
         setVehicles((prev) => prev.map((v) => (v.system_id === data.system_id ? data : v)));
       } else if (event === 'vehicle.lost') {
         setVehicles((prev) => prev.filter((v) => v.system_id !== data.system_id));
+        setStatusBySystem((prev) => {
+          const next = { ...prev };
+          delete next[data.system_id];
+          return next;
+        });
+        if (data.system_id === activeSystemId) {
+          selectVehicle(null);
+          setParameters([]);
+          sendMessage({ action: 'get_vehicles' });
+        }
         appendLog(`Vehicle connection lost: SYSID ${data.system_id}`, 'error');
+      } else if (event === 'vehicle.status') {
+        setStatusBySystem((prev) => ({ ...prev, [data.system_id]: data }));
       } else if (event === 'param.updated') {
         setParameters((prev) => {
           const updated = data.param;
@@ -108,11 +132,25 @@ export function useTelemetry(ws) {
         setTelemetry((prev) => ({
           ...prev,
           gps: {
+            ...prev.gps,
             lat: data.lat,
             lon: data.lon,
             alt: data.alt,
             fix_type: data.fix_type,
             satellites: data.satellites,
+          },
+        }));
+      } else if (event === 'telemetry.position' || event === 'telemetry.hud') {
+        if (data.system_id && data.system_id !== activeSystemId) return;
+        setTelemetry((prev) => ({
+          ...prev,
+          speed: data.speed ?? prev.speed,
+          gps: {
+            ...prev.gps,
+            lat: data.lat ?? prev.gps.lat,
+            lon: data.lon ?? prev.gps.lon,
+            alt: data.alt ?? prev.gps.alt,
+            relative_alt: data.relative_alt ?? prev.gps.relative_alt,
           },
         }));
       } else if (event === 'telemetry.battery') {
@@ -133,18 +171,27 @@ export function useTelemetry(ws) {
         }));
       }
     }
-  }, [lastMessage, activeSystemId, appendLog, sendMessage]);
+    };
+    return subscribeMessage(handleMessage);
+  }, [subscribeMessage, activeSystemId, appendLog, sendMessage, selectVehicle]);
 
-  // Query vehicles on connect
+  // React to the transport lifecycle so disconnected data never appears live.
   useEffect(() => {
-    if (isConnected) {
-      appendLog('Connected to Core Bridge WebSocket', 'success');
-      sendMessage({ action: 'get_vehicles' });
-      sendMessage({ action: 'get_connection_status' });
-    } else {
-      appendLog('Disconnected from Core Bridge WebSocket. Reconnecting...', 'error');
-    }
-  }, [isConnected, appendLog, sendMessage]);
+    const handleConnection = (connected) => {
+      if (connected) {
+        appendLog('Connected to Core Bridge WebSocket', 'success');
+        sendMessage({ action: 'get_vehicles' });
+        sendMessage({ action: 'get_connection_status' });
+      } else {
+        selectVehicle(null);
+        setVehicles([]);
+        setParameters([]);
+        setStatusBySystem({});
+        appendLog('Disconnected from Core Bridge WebSocket. Reconnecting...', 'error');
+      }
+    };
+    return subscribeConnection(handleConnection);
+  }, [subscribeConnection, appendLog, sendMessage, selectVehicle]);
 
   // Query parameters when active vehicle changes
   useEffect(() => {
@@ -220,7 +267,8 @@ export function useTelemetry(ws) {
   return {
     vehicles,
     activeSystemId,
-    setActiveSystemId,
+    setActiveSystemId: selectVehicle,
+    activeVehicleStatus: statusBySystem[activeSystemId] ?? null,
     parameters,
     connectionStatus,
     telemetry,

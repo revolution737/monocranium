@@ -28,6 +28,7 @@ ENV/
 env/
 
 # Testing & Coverage
+logs/
 .pytest_cache/
 .coverage
 .coverage.*

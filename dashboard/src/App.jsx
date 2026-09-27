@@ -15,8 +15,8 @@ export default function App() {
     activeSystemId,
     setActiveSystemId,
     parameters,
-    connectionStatus,
     telemetry,
+    activeVehicleStatus,
     logs,
     sendRcOverride,
     setParameter,
@@ -60,16 +60,15 @@ export default function App() {
         <main className="content-body">
           {currentPage === 'setup' && (
             <SetupPage
-              vehicles={vehicles}
               activeVehicle={activeVehicle}
               onRunAutoConfig={runAutoConfig}
-              connectionStatus={connectionStatus}
             />
           )}
 
           {currentPage === 'dashboard' && (
             <DashboardPage
               telemetry={telemetry}
+              activeVehicleStatus={activeVehicleStatus}
               logs={logs}
               onSendRcOverride={sendRcOverride}
               activeVehicle={activeVehicle}

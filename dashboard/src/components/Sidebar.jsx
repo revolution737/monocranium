@@ -101,7 +101,7 @@ export function Sidebar({
 
       {/* Footer Info */}
       <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border)', fontSize: '11px', color: 'var(--text-muted)' }}>
-        <span>Target: 4WD Skid-Steer Rover</span>
+        <span>Target: {vehicles.find((v) => v.system_id === activeSystemId)?.vehicle_type ?? 'No active vehicle'}</span>
       </div>
     </aside>
   );

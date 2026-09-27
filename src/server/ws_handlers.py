@@ -41,7 +41,10 @@ async def dispatch_command(
     if not action or not isinstance(action, str):
         return {"response_to": "unknown", "success": False, "error": "Missing 'action' field"}
 
-    sys_id = int(data.get("system_id", 0))
+    try:
+        sys_id = int(data.get("system_id", 0))
+    except (TypeError, ValueError):
+        return {"response_to": action, "success": False, "error": "Invalid system_id"}
     payload = data.get("payload", {})
 
     return await _execute_action(
@@ -194,7 +197,9 @@ async def _handle_arm_vehicle(
     auto_config: AutoConfigEngine,
 ) -> dict[str, Any]:
     """Parse and dispatch arm or disarm command."""
-    arm = bool(payload.get("arm", False))
+    arm = payload.get("arm", False)
+    if not isinstance(arm, bool):
+        raise ValueError("arm must be a boolean")
     logger.info("Dispatching arm command to vehicle SYSID %d: arm=%s", sys_id, arm)
     await auto_config.arm_vehicle(sys_id, arm)
     return {"system_id": sys_id, "armed": arm}

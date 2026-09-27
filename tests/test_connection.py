@@ -1,11 +1,26 @@
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+import asyncio
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from src.core.connection import ConnectionManager, MavlinkConnection
 from src.core.types import ConnectionEndpoint, ConnectionState
+
+
+@pytest.mark.asyncio
+async def test_receive_drains_buffer_before_sleep(test_endpoint: ConnectionEndpoint) -> None:
+    """Queued telemetry and ACKs are consumed before the first polling delay."""
+    conn = MavlinkConnection(test_endpoint)
+    messages = [MagicMock(), MagicMock(), MagicMock()]
+    conn._mav_conn = MagicMock()
+    conn._mav_conn.recv_msg.side_effect = [*messages, None]
+    handler = AsyncMock()
+    conn.on_message(handler)
+    with patch("src.core.connection.asyncio.sleep", side_effect=asyncio.CancelledError):
+        await conn._read_loop()
+    assert [call.args[0] for call in handler.await_args_list] == messages
 
 
 @pytest.fixture
@@ -110,3 +125,30 @@ async def test_connection_manager_lifecycle(
     await mgr.remove_connection(test_endpoint)
     assert mgr.get_connection(test_endpoint) is None
     assert len(mgr.list_connections()) == 0
+
+
+@pytest.mark.asyncio
+async def test_disconnected_connection_retries_and_recovers(
+    test_endpoint: ConnectionEndpoint,
+) -> None:
+    """A dropped socket is reopened without requiring a manual scan."""
+    with patch("src.core.connection.create_mav_connection") as factory:
+        factory.return_value = MagicMock()
+        mgr = ConnectionManager()
+        conn = await mgr.add_connection(test_endpoint)
+        await conn._set_state(ConnectionState.CONNECTED)
+        await conn._set_state(ConnectionState.DISCONNECTED)
+        for _ in range(20):
+            if factory.call_count > 1:
+                break
+            await asyncio.sleep(0.01)
+        assert factory.call_count == 2
+        await mgr.close_all()
+
+
+@pytest.mark.asyncio
+async def test_disconnected_send_is_rejected(test_endpoint: ConnectionEndpoint) -> None:
+    """A command must not report success when no MAVLink socket exists."""
+    conn = MavlinkConnection(test_endpoint)
+    with pytest.raises(ConnectionError):
+        await conn.send_message(MagicMock())

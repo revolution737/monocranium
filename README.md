@@ -1,7 +1,7 @@
 # Monocranium 💀
 
 > **One brain to rule them all.**
-> A modular MAVLink control bridge and calibration dashboard for unmanned vehicles, featuring an autonomous discovery engine, visual rover simulation, and modern web interface.
+> A modular MAVLink control bridge and calibration dashboard for unmanned vehicles, featuring autonomous discovery, rover and drone simulation, real ArduPilot Copter SITL support, and a web interface.
 
 ---
 
@@ -85,12 +85,13 @@ cd ..
 
 ### 2. Running the System
 
-You can run both processes together or in separate terminals.
+You can run the Python simulators together or connect to official ArduPilot Copter SITL.
 
 #### Option A: Unified Launcher (Recommended)
 ```bash
 ./scripts/start_all.sh
 ```
+Use `--rover` or `--drone` to start one Python simulator and the bridge. The default `--all` starts both Python simulators; it does not launch official ArduPilot SITL.
 
 #### Option B: Two-Terminal Execution
 **Terminal 1 — Rover Simulator:**
@@ -105,6 +106,24 @@ You can run both processes together or in separate terminals.
 ```
 *Connects to the rover over MAVLink TCP port 5770, discovers the vehicle, synchronizes all 19 parameters, and starts the Web interface.*
 
+#### Option C: Official ArduPilot Copter SITL
+
+Install ArduPilot's `sim_vehicle.py` in `PATH`, or run Docker with a working daemon. In one terminal:
+
+```bash
+bash scripts/start_ardupilot_sitl.sh
+```
+
+In another terminal, start the bridge:
+
+```bash
+python -m src.main
+```
+
+The launcher starts compiled ArduCopter with a direct TCP listener on port 5771. It disables MAVProxy so the bridge can receive the heartbeat and request telemetry streams automatically. For a second local SITL alongside another instance, use `--instance 1`; `--port 5760` overrides the listener port, and the bridge must then use `--drone-port 5760`. Keep standalone heartbeat probes closed before starting the bridge because the SITL serial TCP listener serves one client at a time. Docker launch depends on the image being available in your environment.
+
+The dashboard displays unknown values (`--`) until live MAVLink telemetry arrives. ARM/DISARM and mode responses require an accepted `COMMAND_ACK`; the control state reflects subsequent vehicle heartbeats. The bridge reconnects after a lost MAVLink session and clears disconnected vehicle state.
+
 ### 3. Open the Dashboard
 Navigate to [http://localhost:8080](http://localhost:8080) in your web browser.
 
@@ -112,7 +131,7 @@ Navigate to [http://localhost:8080](http://localhost:8080) in your web browser.
 
 ## Running Tests
 
-Monocranium has a comprehensive test suite (76 tests across unit, mock, and end-to-end integration tests):
+Monocranium has unit, offline integration, and launcher argument tests:
 
 ```bash
 # Run all automated tests
@@ -165,7 +184,7 @@ monocranium/
 │   │
 │   └── main.py                 # Core Bridge Process 1 wiring entry point
 │
-├── tests/                      # Automated test suite (76 tests)
+├── tests/                      # Automated unit and integration tests
 │   ├── conftest.py             # Shared fixtures
 │   ├── test_types.py
 │   ├── test_telemetry_bus.py

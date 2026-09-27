@@ -10,6 +10,7 @@ DOCKER_TARGET_PORT=5760
 DOCKER_IMAGE="radarku/ardupilot-sitl"
 
 PORT="$DEFAULT_PORT"
+INSTANCE=0
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -26,27 +27,39 @@ while [[ $# -gt 0 ]]; do
             PORT="${1#*=}"
             shift
             ;;
+        --instance)
+            if [[ $# -lt 2 || ! "$2" =~ ^[0-9]+$ ]]; then
+                echo "Error: --instance requires a non-negative integer" >&2
+                exit 1
+            fi
+            INSTANCE="$2"
+            shift 2
+            ;;
         -h|--help)
-            echo "Usage: $0 [--port <port>]"
+            echo "Usage: $0 [--port <port>] [--instance <number>]"
             echo "  --port <port>  MAVLink TCP port to expose (default: 5771)"
+            echo "  --instance <number>  Independent SITL instance (default: 0)"
             exit 0
             ;;
         *)
             echo "Error: Unknown argument: $1" >&2
-            echo "Usage: $0 [--port <port>]" >&2
+            echo "Usage: $0 [--port <port>] [--instance <number>]" >&2
             exit 1
             ;;
     esac
 done
 
+# Give the bridge exclusive access to serial0; MAVProxy would consume this stream.
 # Check Docker availability first (CLI installed and daemon responsive)
 if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
     echo "=== Launching ArduPilot SITL in Docker container on port $PORT ==="
     exec docker run --rm -it -p "$PORT:$DOCKER_TARGET_PORT" "$DOCKER_IMAGE" \
-        sim_vehicle.py -v ArduCopter -f quad --out=tcp:0.0.0.0:$DOCKER_TARGET_PORT
+        sim_vehicle.py -v ArduCopter -f quad -I "$INSTANCE" --no-mavproxy \
+        -A "--serial0=tcp:$DOCKER_TARGET_PORT:wait"
 elif command -v sim_vehicle.py >/dev/null 2>&1; then
     echo "=== Docker unavailable; launching local ArduPilot SITL on port $PORT ==="
-    exec sim_vehicle.py -v ArduCopter -f quad --out=tcp:127.0.0.1:"$PORT"
+    exec sim_vehicle.py -v ArduCopter -f quad -I "$INSTANCE" --no-mavproxy \
+        -A "--serial0=tcp:$PORT:wait"
 else
     echo "Error: Neither Docker nor local sim_vehicle.py is available on this system." >&2
     echo "" >&2

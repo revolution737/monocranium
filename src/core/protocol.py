@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import logging
+import math
 from typing import Any
 
 from pymavlink import mavutil
+from pymavlink.dialects.v20 import ardupilotmega as mavlink2
 
 from src.core.types import (
     AttitudeData,
@@ -23,10 +25,21 @@ GPS_ALT_SCALE_M: float = 1000.0
 BATT_VOLT_SCALE: float = 1000.0
 BATT_AMP_SCALE: float = 100.0
 NUM_RC_CHANNELS: int = 18
+MAV_CMD_SET_MESSAGE_INTERVAL: int = 511
+MICROSECONDS_PER_SECOND: int = 1_000_000
+VELOCITY_CM_PER_M: float = 100.0
+UNKNOWN_BATTERY_VOLTAGE: int = 65535
+
+
+def get_simulator_mavlink_dialect() -> Any:
+    """Expose the MAVLink v2 dialect for simulator message synthesis."""
+    return mavlink2
 
 MAV_CMD_COMPONENT_ARM_DISARM: int = 400
 MAV_CMD_DO_SET_MODE: int = 176
 MAV_MODE_FLAG_CUSTOM_MODE_ENABLED: int = 1
+MAV_MODE_FLAG_SAFETY_ARMED: int = 128
+MAV_AUTOPILOT_ARDUPILOTMEGA: int = 3
 ARM_PARAM_ENABLE: float = 1.0
 ARM_PARAM_DISABLE: float = 0.0
 
@@ -47,6 +60,24 @@ COPTER_FLIGHT_MODES: dict[str, int] = {
     "POSHOLD": 16,
     "BRAKE": 17,
 }
+
+
+def parse_vehicle_status(msg: Any, system_id: int) -> dict[str, int | str | bool]:
+    """Read the actual armed flag and copter mode from a MAVLink heartbeat."""
+    if not hasattr(msg, "base_mode") or not hasattr(msg, "custom_mode"):
+        raise ValueError("HEARTBEAT missing base_mode or custom_mode")
+    custom_mode = int(msg.custom_mode)
+    mode = str(custom_mode)
+    if getattr(msg, "autopilot", None) == MAV_AUTOPILOT_ARDUPILOTMEGA:
+        mode = next(
+            (name for name, number in COPTER_FLIGHT_MODES.items() if number == custom_mode),
+            mode,
+        )
+    return {
+        "system_id": system_id,
+        "armed": bool(int(msg.base_mode) & MAV_MODE_FLAG_SAFETY_ARMED),
+        "mode": mode,
+    }
 
 
 def parse_heartbeat(msg: Any, system_id: int, component_id: int) -> VehicleIdentity:
@@ -168,14 +199,66 @@ def parse_battery(msg: Any) -> BatteryData:
     Raises:
         ValueError: If battery fields are missing.
     """
-    required = ("voltage_battery", "current_battery", "battery_remaining")
+    required = ("current_battery", "battery_remaining")
     if any(not hasattr(msg, attr) for attr in required):
         raise ValueError("Battery message missing required fields")
+    if hasattr(msg, "voltage_battery"):
+        voltage = float(msg.voltage_battery)
+        voltage = -1.0 if voltage == UNKNOWN_BATTERY_VOLTAGE else voltage / BATT_VOLT_SCALE
+    elif hasattr(msg, "voltages"):
+        cells = [v for v in msg.voltages if v != UNKNOWN_BATTERY_VOLTAGE]
+        voltage = sum(cells) / BATT_VOLT_SCALE if cells else -1.0
+    else:
+        raise ValueError("Battery message missing voltage fields")
 
     return BatteryData(
-        voltage=float(msg.voltage_battery) / BATT_VOLT_SCALE,
-        current=float(msg.current_battery) / BATT_AMP_SCALE,
+        voltage=voltage,
+        current=float(msg.current_battery) / BATT_AMP_SCALE if msg.current_battery >= 0 else -1.0,
         remaining=int(msg.battery_remaining),
+    )
+
+
+def parse_global_position(msg: Any) -> dict[str, float]:
+    """Decode fused position (MSL altitude) and horizontal ground speed."""
+    required = ("lat", "lon", "alt", "relative_alt", "vx", "vy")
+    if any(not hasattr(msg, attr) for attr in required):
+        raise ValueError("GLOBAL_POSITION_INT missing position or velocity fields")
+    return {
+        "lat": float(msg.lat) / GPS_COORD_SCALE,
+        "lon": float(msg.lon) / GPS_COORD_SCALE,
+        "alt": float(msg.alt) / GPS_ALT_SCALE_M,
+        "relative_alt": float(msg.relative_alt) / GPS_ALT_SCALE_M,
+        "speed": math.hypot(msg.vx, msg.vy) / VELOCITY_CM_PER_M,
+    }
+
+
+def parse_vfr_hud(msg: Any) -> dict[str, float]:
+    """Decode HUD ground speed, MSL altitude, and vertical speed in SI units."""
+    if any(not hasattr(msg, attr) for attr in ("groundspeed", "alt", "climb")):
+        raise ValueError("VFR_HUD missing speed or altitude fields")
+    return {"speed": float(msg.groundspeed), "alt": float(msg.alt), "climb": float(msg.climb)}
+
+
+def create_message_interval_msg(
+    target_system: int, target_component: int, message_id: int, rate_hz: int,
+) -> Any:
+    """Request a positive per-message frequency using MAV_CMD_SET_MESSAGE_INTERVAL."""
+    if rate_hz <= 0:
+        raise ValueError("Telemetry rate must be positive")
+    return mavutil.mavlink.MAVLink(None).command_long_encode(
+        target_system, target_component, MAV_CMD_SET_MESSAGE_INTERVAL, 0,
+        message_id, MICROSECONDS_PER_SECOND / rate_hz, 0, 0, 0, 0, 0,
+    )
+
+
+def create_data_stream_msg(
+    target_system: int, target_component: int, stream_id: int, rate_hz: int,
+) -> Any:
+    """Enable a legacy stream group at a positive frequency."""
+    if rate_hz <= 0:
+        raise ValueError("Telemetry rate must be positive")
+    return mavutil.mavlink.MAVLink(None).request_data_stream_encode(
+        target_system, target_component, stream_id, rate_hz, 1,
     )
 
 
@@ -352,7 +435,10 @@ def create_set_mode_msg(
     """
     mav = mavutil.mavlink.MAVLink(None)
     if isinstance(mode, str):
-        mode_num = COPTER_FLIGHT_MODES.get(mode.upper(), 0)
+        normalized = mode.upper()
+        if normalized not in COPTER_FLIGHT_MODES:
+            raise ValueError(f"Unknown flight mode: {mode}")
+        mode_num = COPTER_FLIGHT_MODES[normalized]
     else:
         mode_num = int(mode)
     return mav.command_long_encode(

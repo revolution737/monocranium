@@ -7,6 +7,7 @@ export function DashboardPage({
   logs,
   onSendRcOverride,
   activeVehicle,
+  activeVehicleStatus,
   onArmVehicle,
   onSetFlightMode,
 }) {
@@ -17,8 +18,8 @@ export function DashboardPage({
   const [roll, setRoll] = useState(1500);
   const [pitch, setPitch] = useState(1500);
   const [yaw, setYaw] = useState(1500);
-  const [isArmed, setIsArmed] = useState(false);
-  const [flightMode, setFlightMode] = useState('STABILIZE');
+  const isArmed = activeVehicleStatus?.armed;
+  const flightMode = activeVehicleStatus?.mode ?? '';
 
   const handleThrottleChange = (val) => {
     const num = parseInt(val, 10);
@@ -66,7 +67,6 @@ export function DashboardPage({
 
   const handleArmToggle = () => {
     const nextArmed = !isArmed;
-    setIsArmed(nextArmed);
     if (onArmVehicle) {
       onArmVehicle(nextArmed, activeVehicle?.system_id);
     }
@@ -74,15 +74,16 @@ export function DashboardPage({
 
   const handleModeChange = (e) => {
     const mode = e.target.value;
-    setFlightMode(mode);
     if (onSetFlightMode) {
       onSetFlightMode(mode, activeVehicle?.system_id);
     }
   };
 
-  const yawDeg = ((telemetry.attitude.yaw * 180) / Math.PI).toFixed(1);
-  const rollDeg = ((telemetry.attitude.roll * 180) / Math.PI).toFixed(1);
-  const pitchDeg = ((telemetry.attitude.pitch * 180) / Math.PI).toFixed(1);
+  const formatNumber = (value, digits) => Number.isFinite(value) ? value.toFixed(digits) : '--';
+  const angleDegrees = (value) => value == null ? '--' : formatNumber(value * 180 / Math.PI, 1);
+  const yawDeg = angleDegrees(telemetry.attitude.yaw);
+  const rollDeg = angleDegrees(telemetry.attitude.roll);
+  const pitchDeg = angleDegrees(telemetry.attitude.pitch);
 
   return (
     <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -97,7 +98,7 @@ export function DashboardPage({
         />
         <TelemetryGauge
           title="Speed"
-          value={telemetry.speed?.toFixed(2) || '0.00'}
+          value={formatNumber(telemetry.speed, 2)}
           unit="m/s"
           history={telemetry.history}
           dataKey="speed"
@@ -105,13 +106,13 @@ export function DashboardPage({
         />
         <TelemetryGauge
           title="Battery Voltage"
-          value={telemetry.battery.voltage?.toFixed(2) || '11.1'}
+          value={formatNumber(telemetry.battery.voltage, 2)}
           unit="V"
           color="#d29922"
         />
         <TelemetryGauge
           title="Battery Current"
-          value={telemetry.battery.current?.toFixed(2) || '0.0'}
+          value={formatNumber(telemetry.battery.current, 2)}
           unit="A"
           color="#f85149"
         />
@@ -124,7 +125,7 @@ export function DashboardPage({
         <TelemetryGauge
           title="GPS Satellites"
           value={telemetry.gps.satellites}
-          unit="3D Fix"
+          unit={telemetry.gps.fix_type == null ? '' : telemetry.gps.fix_type >= 3 ? '3D Fix' : 'No 3D Fix'}
           color="#58a6ff"
         />
       </div>
@@ -215,10 +216,11 @@ export function DashboardPage({
               <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginTop: '8px', paddingTop: '12px', borderTop: '1px solid var(--border)' }}>
                 <button
                   onClick={handleArmToggle}
+                  disabled={isArmed == null}
                   className={`btn btn--sm ${isArmed ? 'btn--primary' : 'btn--danger'}`}
                   style={{ minWidth: '100px' }}
                 >
-                  {isArmed ? '🟢 ARMED' : '🔴 DISARMED'}
+                  {isArmed == null ? 'ARM state unknown' : isArmed ? '🟢 ARMED' : '🔴 DISARMED'}
                 </button>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
@@ -226,9 +228,14 @@ export function DashboardPage({
                   <select
                     value={flightMode}
                     onChange={handleModeChange}
+                    disabled={!activeVehicleStatus}
                     className="input"
                     style={{ flex: 1, fontSize: '12px', padding: '4px 8px' }}
                   >
+                    <option value="" disabled>Unknown mode</option>
+                    {flightMode && !['STABILIZE', 'ALT_HOLD', 'LOITER', 'RTL', 'LAND', 'GUIDED'].includes(flightMode) && (
+                      <option value={flightMode}>{flightMode}</option>
+                    )}
                     <option value="STABILIZE">STABILIZE</option>
                     <option value="ALT_HOLD">ALT_HOLD</option>
                     <option value="LOITER">LOITER</option>
@@ -297,15 +304,15 @@ export function DashboardPage({
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
               <span style={{ color: 'var(--text-secondary)' }}>Latitude</span>
-              <span style={{ fontFamily: 'var(--font-mono)' }}>{telemetry.gps.lat.toFixed(6)}°</span>
+              <span style={{ fontFamily: 'var(--font-mono)' }}>{formatNumber(telemetry.gps.lat, 6)}°</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
               <span style={{ color: 'var(--text-secondary)' }}>Longitude</span>
-              <span style={{ fontFamily: 'var(--font-mono)' }}>{telemetry.gps.lon.toFixed(6)}°</span>
+              <span style={{ fontFamily: 'var(--font-mono)' }}>{formatNumber(telemetry.gps.lon, 6)}°</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
               <span style={{ color: 'var(--text-secondary)' }}>Altitude (MSL)</span>
-              <span style={{ fontFamily: 'var(--font-mono)' }}>{telemetry.gps.alt.toFixed(1)} m</span>
+              <span style={{ fontFamily: 'var(--font-mono)' }}>{formatNumber(telemetry.gps.alt, 1)} m</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
               <span style={{ color: 'var(--text-secondary)' }}>Roll / Pitch</span>

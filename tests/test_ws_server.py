@@ -328,3 +328,63 @@ async def test_ws_handlers_set_flight_mode_defaults(
     assert res["data"]["mode"] == "STABILIZE"
     mock_auto_config.set_mode.assert_awaited_once_with(3, "STABILIZE")
 
+
+@pytest.mark.asyncio
+async def test_ws_arm_rejection_returns_failure(
+    vehicle_registry: VehicleRegistry, param_store: ParameterStore,
+    mock_auto_config: MagicMock, mock_conn_manager: MagicMock,
+) -> None:
+    """An autopilot rejection reaches the browser as an error."""
+    mock_auto_config.arm_vehicle.side_effect = ValueError("Vehicle rejected arm")
+    result = await dispatch_command(
+        json.dumps({"action": "arm_vehicle", "system_id": 3, "payload": {"arm": True}}),
+        vehicle_registry, param_store, mock_auto_config, mock_conn_manager,
+    )
+    assert result["success"] is False
+    assert "rejected" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_ws_mode_timeout_returns_failure(
+    vehicle_registry: VehicleRegistry, param_store: ParameterStore,
+    mock_auto_config: MagicMock, mock_conn_manager: MagicMock,
+) -> None:
+    """An unacknowledged mode command cannot be logged as successful."""
+    mock_auto_config.set_mode.side_effect = TimeoutError("No COMMAND_ACK")
+    result = await dispatch_command(
+        json.dumps({"action": "set_flight_mode", "system_id": 3,
+                    "payload": {"mode": "LOITER"}}),
+        vehicle_registry, param_store, mock_auto_config, mock_conn_manager,
+    )
+    assert result["success"] is False
+    assert "COMMAND_ACK" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_ws_arm_rejects_string_boolean(
+    vehicle_registry: VehicleRegistry, param_store: ParameterStore,
+    mock_auto_config: MagicMock, mock_conn_manager: MagicMock,
+) -> None:
+    """The string 'false' must never arm a vehicle via Python truthiness."""
+    result = await dispatch_command(
+        json.dumps({"action": "arm_vehicle", "system_id": 3,
+                    "payload": {"arm": "false"}}),
+        vehicle_registry, param_store, mock_auto_config, mock_conn_manager,
+    )
+    assert result["success"] is False
+    mock_auto_config.arm_vehicle.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_ws_invalid_system_id_returns_error(
+    vehicle_registry: VehicleRegistry, param_store: ParameterStore,
+    mock_auto_config: MagicMock, mock_conn_manager: MagicMock,
+) -> None:
+    """Malformed command targets cannot terminate the WebSocket handler."""
+    result = await dispatch_command(
+        json.dumps({"action": "arm_vehicle", "system_id": "bad", "payload": {"arm": True}}),
+        vehicle_registry, param_store, mock_auto_config, mock_conn_manager,
+    )
+    assert result["success"] is False
+    mock_auto_config.arm_vehicle.assert_not_awaited()
+

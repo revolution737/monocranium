@@ -5,8 +5,6 @@ import asyncio
 import logging
 import threading
 
-import pygame
-
 from src.simulators.rover_config import DEFAULT_ROVER_CONFIG
 from src.simulators.rover_physics import RoverKinematics
 from src.simulators.rover_renderer import RoverRenderer
@@ -68,12 +66,10 @@ def main() -> None:
 
     loop = asyncio.new_event_loop()
     start_background_server(server, loop)
-    clock = pygame.time.Clock()
-
     running = True
     try:
         while running:
-            dt = clock.tick(TARGET_FPS) / 1000.0
+            dt = renderer.tick(TARGET_FPS)
             running, keyboard_pwm = renderer.handle_events()
 
             throttle, steering = server.current_rc
