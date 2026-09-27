@@ -198,5 +198,15 @@ Format for each entry:
 - **Rationale**: These diagnostics were useful during investigation but flooded normal operation without changing telemetry delivery. The offline drone simulator and regression tests remain required project components.
 - **Command routing**: Send RC overrides and parameter writes through the existing connected-vehicle lookup. Broadcasting these writes to every endpoint could fail at an unrelated offline endpoint after disconnected sends became explicit errors. Tests reproduce that failure and verify both successful routing and missing-target errors.
 
+---
+
+## DECISION-019: Optional Rover Discovery
+
+- **Date**: 2026-09-27
+- **Author**: Aditi
+- **Context**: The bridge always scanned the default rover endpoint, even when `start_all.sh --drone` started no rover. A rover port of zero was formatted into an invalid TCP URI and then registered for reconnect attempts.
+- **Decision**: Build the endpoint list in `src/main.py` before discovery. Omit the rover when `--no-rover` is set, its port is absent, or its port is zero. Reject invalid ports for enabled endpoints before starting the servers. Pass `--no-rover` from the launcher's drone mode. Preserve both endpoints by default.
+- **Rationale**: Disabled endpoints never enter `ConnectionManager`, so the existing connection and retry machinery requires no changes.
+
 
 

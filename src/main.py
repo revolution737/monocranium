@@ -15,6 +15,8 @@ from src.server.http_server import HttpServer
 from src.server.ws_server import WebSocketServer
 
 logger = logging.getLogger(__name__)
+MIN_MAVLINK_PORT = 1
+MAX_MAVLINK_PORT = 65535
 
 
 def parse_args() -> argparse.Namespace:
@@ -22,6 +24,9 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Monocranium Core Bridge")
     parser.add_argument("--rover-host", type=str, default="127.0.0.1", help="Rover MAVLink host")
     parser.add_argument("--rover-port", type=int, default=5770, help="Rover MAVLink port")
+    parser.add_argument(
+        "--no-rover", action="store_true", help="Disable rover MAVLink discovery",
+    )
     parser.add_argument(
         "--rover-protocol",
         type=str,
@@ -43,6 +48,22 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def build_endpoints(args: argparse.Namespace) -> list[ConnectionEndpoint]:
+    """Select configured MAVLink endpoints before starting any connections."""
+    if not MIN_MAVLINK_PORT <= args.drone_port <= MAX_MAVLINK_PORT:
+        raise ValueError("Drone MAVLink port must be between 1 and 65535")
+    endpoints: list[ConnectionEndpoint] = []
+    rover_port = getattr(args, "rover_port", None)
+    if not getattr(args, "no_rover", False) and rover_port not in (None, 0):
+        if not MIN_MAVLINK_PORT <= rover_port <= MAX_MAVLINK_PORT:
+            raise ValueError("Rover MAVLink port must be between 1 and 65535")
+        endpoints.append(ConnectionEndpoint(
+            args.rover_host, rover_port, args.rover_protocol,
+        ))
+    endpoints.append(ConnectionEndpoint(args.drone_host, args.drone_port, args.drone_protocol))
+    return endpoints
+
+
 async def run_bridge(args: argparse.Namespace, stop_event: asyncio.Event) -> None:
     """Instantiate, wire, and run all Core Bridge subsystems.
 
@@ -50,6 +71,7 @@ async def run_bridge(args: argparse.Namespace, stop_event: asyncio.Event) -> Non
         args: Parsed command-line arguments.
         stop_event: Event signaling when to shut down.
     """
+    endpoints = build_endpoints(args)
     bus = TelemetryBus()
     param_store = ParameterStore(bus)
     registry = VehicleRegistry(bus)
@@ -71,10 +93,6 @@ async def run_bridge(args: argparse.Namespace, stop_event: asyncio.Event) -> Non
     await http_server.start()
     await ws_server.start()
 
-    endpoints = [
-        ConnectionEndpoint(args.rover_host, args.rover_port, args.rover_protocol),
-        ConnectionEndpoint(args.drone_host, args.drone_port, args.drone_protocol),
-    ]
     logger.info("Core Bridge running: WS port %d, HTTP port %d", args.ws_port, args.http_port)
     asyncio.create_task(auto_config.run_full_scan(endpoints))
 

@@ -81,4 +81,8 @@ esac
 sleep "$SIMULATOR_STARTUP_DELAY_SECONDS"
 
 echo "=== Starting Core Bridge ==="
-"$PYTHON" -m src.main
+if [ "$MODE" = "drone" ]; then
+    "$PYTHON" -m src.main --no-rover
+else
+    "$PYTHON" -m src.main
+fi

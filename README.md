@@ -91,7 +91,7 @@ You can run the Python simulators together or connect to official ArduPilot Copt
 ```bash
 ./scripts/start_all.sh
 ```
-Use `--rover` or `--drone` to start one Python simulator and the bridge. The default `--all` starts both Python simulators; it does not launch official ArduPilot SITL.
+Use `--rover` or `--drone` to start one Python simulator and the bridge. `--drone` also disables rover discovery in the bridge. The default `--all` starts both Python simulators; it does not launch official ArduPilot SITL.
 
 #### Option B: Two-Terminal Execution
 **Terminal 1 — Rover Simulator:**
@@ -117,10 +117,10 @@ bash scripts/start_ardupilot_sitl.sh
 In another terminal, start the bridge:
 
 ```bash
-python -m src.main
+python -m src.main --no-rover
 ```
 
-The launcher starts compiled ArduCopter with a direct TCP listener on port 5771. It disables MAVProxy so the bridge can receive the heartbeat and request telemetry streams automatically. For a second local SITL alongside another instance, use `--instance 1`; `--port 5760` overrides the listener port, and the bridge must then use `--drone-port 5760`. Keep standalone heartbeat probes closed before starting the bridge because the SITL serial TCP listener serves one client at a time. Docker launch depends on the image being available in your environment.
+The launcher starts compiled ArduCopter with a direct TCP listener on port 5771. It disables MAVProxy so the bridge can receive the heartbeat and request telemetry streams automatically. `--no-rover` (or `--rover-port 0`) keeps the absent rover out of discovery and reconnect attempts. Omit it when connecting both rover and drone. For a second local SITL alongside another instance, use `--instance 1`; `--port 5760` overrides the listener port, and the bridge must then use `--drone-port 5760`. Keep standalone heartbeat probes closed before starting the bridge because the SITL serial TCP listener serves one client at a time. Docker launch depends on the image being available in your environment.
 
 The dashboard displays unknown values (`--`) until live MAVLink telemetry arrives. ARM/DISARM and mode responses require an accepted `COMMAND_ACK`; the control state reflects subsequent vehicle heartbeats. The bridge reconnects after a lost MAVLink session and clears disconnected vehicle state.
 
