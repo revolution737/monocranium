@@ -122,7 +122,15 @@ async def _execute_action(
         if query_res is not None:
             return query_res
 
-        cmd_res = await _dispatch_command_action(action, sys_id, payload, auto_config, conn_mgr)
+        target_sys_id = sys_id
+        if target_sys_id == 0:
+            active_vehicles = registry.list_all()
+            if active_vehicles:
+                target_sys_id = active_vehicles[0].system_id
+
+        cmd_res = await _dispatch_command_action(
+            action, target_sys_id, payload, auto_config, conn_mgr
+        )
         if cmd_res is not None:
             return cmd_res
 
@@ -187,6 +195,7 @@ async def _handle_arm_vehicle(
 ) -> dict[str, Any]:
     """Parse and dispatch arm or disarm command."""
     arm = bool(payload.get("arm", False))
+    logger.info("Dispatching arm command to vehicle SYSID %d: arm=%s", sys_id, arm)
     await auto_config.arm_vehicle(sys_id, arm)
     return {"system_id": sys_id, "armed": arm}
 
@@ -198,6 +207,7 @@ async def _handle_set_flight_mode(
 ) -> dict[str, Any]:
     """Parse and dispatch flight mode change command."""
     mode = str(payload.get("mode", "STABILIZE"))
+    logger.info("Dispatching flight mode change to vehicle SYSID %d: mode=%s", sys_id, mode)
     await auto_config.set_mode(sys_id, mode)
     return {"system_id": sys_id, "mode": mode}
 

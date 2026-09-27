@@ -51,6 +51,10 @@ export function useTelemetry(ws) {
       } else if (response_to === 'run_autoconfig') {
         setVehicles(data || []);
         appendLog(`Auto-config scan finished. Discovered ${data?.length || 0} vehicles`, 'success');
+      } else if (response_to === 'arm_vehicle') {
+        appendLog(`Vehicle SYSID ${data?.system_id} ${data?.armed ? 'ARMED' : 'DISARMED'} successfully`, 'success');
+      } else if (response_to === 'set_flight_mode') {
+        appendLog(`Vehicle SYSID ${data?.system_id} flight mode set to ${data?.mode}`, 'success');
       }
       return;
     }
@@ -64,6 +68,7 @@ export function useTelemetry(ws) {
           const exists = prev.some((v) => v.system_id === data.system_id);
           return exists ? prev.map((v) => (v.system_id === data.system_id ? data : v)) : [...prev, data];
         });
+        setActiveSystemId((prev) => (prev === 2 || !prev ? data.system_id : prev));
         appendLog(`Vehicle discovered: SYSID ${data.system_id} (${data.vehicle_type})`, 'success');
       } else if (event === 'vehicle.updated') {
         setVehicles((prev) => prev.map((v) => (v.system_id === data.system_id ? data : v)));
@@ -189,10 +194,11 @@ export function useTelemetry(ws) {
   );
 
   const armVehicle = useCallback(
-    (arm) => {
+    (arm, targetSystemId) => {
+      const sysId = targetSystemId ?? activeSystemId;
       return sendMessage({
         action: 'arm_vehicle',
-        system_id: activeSystemId,
+        system_id: sysId,
         payload: { arm },
       });
     },
@@ -200,10 +206,11 @@ export function useTelemetry(ws) {
   );
 
   const setFlightMode = useCallback(
-    (mode) => {
+    (mode, targetSystemId) => {
+      const sysId = targetSystemId ?? activeSystemId;
       return sendMessage({
         action: 'set_flight_mode',
-        system_id: activeSystemId,
+        system_id: sysId,
         payload: { mode },
       });
     },

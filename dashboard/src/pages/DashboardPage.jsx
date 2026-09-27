@@ -67,13 +67,17 @@ export function DashboardPage({
   const handleArmToggle = () => {
     const nextArmed = !isArmed;
     setIsArmed(nextArmed);
-    onArmVehicle(nextArmed);
+    if (onArmVehicle) {
+      onArmVehicle(nextArmed, activeVehicle?.system_id);
+    }
   };
 
   const handleModeChange = (e) => {
     const mode = e.target.value;
     setFlightMode(mode);
-    onSetFlightMode(mode);
+    if (onSetFlightMode) {
+      onSetFlightMode(mode, activeVehicle?.system_id);
+    }
   };
 
   const yawDeg = ((telemetry.attitude.yaw * 180) / Math.PI).toFixed(1);
