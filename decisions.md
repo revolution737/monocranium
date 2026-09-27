@@ -188,5 +188,15 @@ Format for each entry:
 - **Decision**: Make the simulator acknowledge supported arm and Copter mode commands, reflect accepted state in subsequent heartbeats, and reject unsupported or invalid commands without changing state.
 - **Rationale**: The existing simulator remains compatible with confirmed command handling, while the dashboard displays a state derived from MAVLink heartbeats.
 
+---
+
+## DECISION-018: Remove Investigation Scaffolding and Route Vehicle Writes
+
+- **Date**: 2026-09-27
+- **Author**: Aditi
+- **Decision**: Remove unused Vite starter assets and template documentation, remove temporary telemetry payload tracing, and retain MAVLink message-type tracing at DEBUG level. Keep stream-negotiation and connection lifecycle logs at INFO level.
+- **Rationale**: These diagnostics were useful during investigation but flooded normal operation without changing telemetry delivery. The offline drone simulator and regression tests remain required project components.
+- **Command routing**: Send RC overrides and parameter writes through the existing connected-vehicle lookup. Broadcasting these writes to every endpoint could fail at an unrelated offline endpoint after disconnected sends became explicit errors. Tests reproduce that failure and verify both successful routing and missing-target errors.
+
 
 

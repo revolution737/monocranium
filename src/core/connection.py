@@ -150,7 +150,7 @@ class MavlinkConnection:
     async def _process_received_msg(self, msg: Any) -> None:
         """Handle incoming message and update heartbeat tracker."""
         msg_type = getattr(msg, "get_type", lambda: "")()
-        logger.info(
+        logger.debug(
             "MAVLink received %s from %s:%d",
             msg_type,
             self._endpoint.address,

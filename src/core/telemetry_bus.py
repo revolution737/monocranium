@@ -71,8 +71,6 @@ class TelemetryBus:
             event_type: The event type string.
             data: The event payload dictionary.
         """
-        if event_type.startswith("telemetry."):
-            logger.info("Publishing telemetry event: %s %s", event_type, data)
         async with self._lock:
             callbacks = list(self._subscribers.get(event_type, []))
 

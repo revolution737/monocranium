@@ -241,16 +241,25 @@ async def test_auto_config_send_rc_override_and_set_param(
     auto_engine: AutoConfigEngine,
     mock_conn_mgr: MagicMock,
 ) -> None:
-    """Verify send_rc_override and set_parameter send MAVLink messages."""
+    """An unrelated offline endpoint must not block RC or parameter writes."""
     mock_conn = MagicMock()
+    mock_conn.endpoint = ConnectionEndpoint("127.0.0.1", 5770, "tcp")
+    mock_conn.state = ConnectionState.CONNECTED
     mock_conn.send_message = AsyncMock()
-    mock_conn_mgr.list_connections.return_value = [mock_conn]
+    auto_engine._discovered_identities[("127.0.0.1", 5770)] = VehicleIdentity(
+        2, 1, VehicleType.ROVER, AutopilotType.ARDUPILOT, "test",
+    )
+    offline = MagicMock()
+    offline.endpoint = ConnectionEndpoint("127.0.0.1", 5771, "tcp")
+    offline.send_message = AsyncMock(side_effect=ConnectionError("offline"))
+    mock_conn_mgr.list_connections.return_value = [offline, mock_conn]
 
     await auto_engine.send_rc_override(2, throttle_pwm=1700, steering_pwm=1600)
     assert mock_conn.send_message.await_count == 1
 
     await auto_engine.set_parameter(2, "CRUISE_SPEED", 2.0)
     assert mock_conn.send_message.await_count == 2
+    offline.send_message.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -260,6 +269,11 @@ async def test_auto_config_send_rc_override_4ch(
 ) -> None:
     """Verify send_rc_override transmits all 4 channels for drones."""
     mock_conn = MagicMock()
+    mock_conn.endpoint = ConnectionEndpoint("127.0.0.1", 5771, "tcp")
+    mock_conn.state = ConnectionState.CONNECTED
+    auto_engine._discovered_identities[("127.0.0.1", 5771)] = VehicleIdentity(
+        3, 1, VehicleType.COPTER, AutopilotType.ARDUPILOT, "test",
+    )
     mock_conn.send_message = AsyncMock()
     mock_conn_mgr.list_connections.return_value = [mock_conn]
 
@@ -276,6 +290,17 @@ async def test_auto_config_send_rc_override_4ch(
     assert sent_msg.chan2_raw == 1550
     assert sent_msg.chan3_raw == 1600
     assert sent_msg.chan4_raw == 1520
+
+
+@pytest.mark.asyncio
+async def test_rc_and_parameter_writes_require_a_connected_target(
+    auto_engine: AutoConfigEngine,
+) -> None:
+    """Undiscovered targets must report failure instead of silently succeeding."""
+    with pytest.raises(ConnectionError, match="no connected MAVLink endpoint"):
+        await auto_engine.send_rc_override(99, throttle_pwm=1500)
+    with pytest.raises(ConnectionError, match="no connected MAVLink endpoint"):
+        await auto_engine.set_parameter(99, "CRUISE_SPEED", 2.0)
 
 
 @pytest.mark.asyncio

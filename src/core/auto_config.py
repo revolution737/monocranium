@@ -212,7 +212,6 @@ class AutoConfigEngine:
         """Handle ATTITUDE message and publish to telemetry bus."""
         try:
             att = parse_attitude(msg)
-            logger.info("Parsed ATTITUDE for system %d: %s", sys_id, att.to_dict())
             await self._bus.publish("telemetry.attitude", {"system_id": sys_id, **att.to_dict()})
         except ValueError as e:
             logger.warning("Failed parsing ATTITUDE for system %d: %s", sys_id, e)
@@ -221,7 +220,6 @@ class AutoConfigEngine:
         """Handle GPS_RAW_INT message and publish to telemetry bus."""
         try:
             gps = parse_gps(msg)
-            logger.info("Parsed GPS_RAW_INT for system %d: %s", sys_id, gps.to_dict())
             await self._bus.publish("telemetry.gps", {"system_id": sys_id, **gps.to_dict()})
         except ValueError as e:
             logger.warning("Failed parsing GPS_RAW_INT for system %d: %s", sys_id, e)
@@ -230,7 +228,6 @@ class AutoConfigEngine:
         """Handle battery status message and publish to telemetry bus."""
         try:
             batt = parse_battery(msg)
-            logger.info("Parsed %s for system %d: %s", msg.get_type(), sys_id, batt.to_dict())
             await self._bus.publish("telemetry.battery", {"system_id": sys_id, **batt.to_dict()})
         except ValueError as e:
             logger.warning("Failed parsing %s for system %d: %s", msg.get_type(), sys_id, e)
@@ -251,7 +248,6 @@ class AutoConfigEngine:
                 data, event = parse_global_position(msg), "telemetry.position"
             else:
                 data, event = parse_vfr_hud(msg), "telemetry.hud"
-            logger.info("Parsed %s for system %d: %s", kind, sys_id, data)
             await self._bus.publish(event, {"system_id": sys_id, **data})
         except ValueError as exc:
             logger.warning("Failed parsing %s for system %d: %s", kind, sys_id, exc)
@@ -333,8 +329,7 @@ class AutoConfigEngine:
             pitch=pitch_pwm,
             yaw=yaw_pwm,
         )
-        for conn in self._conn_mgr.list_connections():
-            await conn.send_message(msg)
+        await self._connection_for_system(system_id).send_message(msg)
 
     async def set_parameter(
         self,
@@ -350,8 +345,7 @@ class AutoConfigEngine:
             value: New float parameter value.
         """
         msg = create_param_set_msg(system_id, 1, param_id, value)
-        for conn in self._conn_mgr.list_connections():
-            await conn.send_message(msg)
+        await self._connection_for_system(system_id).send_message(msg)
 
     async def arm_vehicle(self, system_id: int, arm: bool) -> None:
         """Transmit arm or disarm command to vehicle.

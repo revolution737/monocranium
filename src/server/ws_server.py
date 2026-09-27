@@ -72,13 +72,6 @@ class WebSocketServer:
 
     async def _on_bus_event(self, event_type: str, data: dict[str, Any]) -> None:
         """Forward telemetry bus events to all connected WebSocket clients."""
-        if event_type.startswith("telemetry."):
-            logger.info(
-                "Telemetry event before broadcast: %s %s (clients=%d)",
-                event_type,
-                data,
-                len(self._clients),
-            )
         if not self._clients:
             return
         payload = {"event": event_type, "data": data}
@@ -96,8 +89,6 @@ class WebSocketServer:
         for client in list(self._clients):
             try:
                 await client.send(raw)
-                if str(message.get("event", "")).startswith("telemetry."):
-                    logger.info("Telemetry WebSocket sent: %s", message)
             except (websockets.exceptions.ConnectionClosed, OSError) as e:
                 logger.debug("Failed broadcasting to client: %s", e)
                 self._clients.discard(client)

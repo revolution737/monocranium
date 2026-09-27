@@ -38,10 +38,6 @@ export function useTelemetry(ws) {
   useEffect(() => {
     const handleMessage = (lastMessage) => {
 
-    if (lastMessage.event?.startsWith('telemetry.')) {
-      console.info('useTelemetry received', lastMessage.event, lastMessage.data);
-    }
-
     // Handle responses to request actions
     if (lastMessage.response_to) {
       const { response_to, success, data, error } = lastMessage;
